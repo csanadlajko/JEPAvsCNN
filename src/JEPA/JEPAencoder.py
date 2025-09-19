@@ -1,9 +1,10 @@
 import torch
+import numpy as np
 
-class Patchify:
+class PatchEmbed:
     
     """
-    Patchify images from a given tensor.\n
+    Patchify and embed representations from a given tensor.\n
     Tensor format must be: (B, C, H, W), where:\n
         - B is the number (batch) of images\n
         - C is the color spectrum of the image\n
@@ -11,9 +12,10 @@ class Patchify:
         - W is the width of the image
     """
     
-    def __init__(self, image_data: torch.Tensor, patch_size: int = 8):
+    def __init__(self, image_data: torch.Tensor, patch_size: int = 8, emb_dim: int = 2):
         self.image_data = image_data
         self.patch_size = patch_size
+        self.emb_dim = emb_dim
         
     def patchify_image(self) -> torch.Tensor:
         """
@@ -36,4 +38,34 @@ class Patchify:
         
         # patches: (B, number_of_patches, patch_dimension)
         
-        return patches
+        return self._patch_embed(patches)
+    
+    def _patch_embed(self, patches: torch.Tensor) -> torch.Tensor:
+        """
+        Embed patches into ``emb_dim`` dimension declared in the ``PatchEmbed`` instance.
+        """
+        linear = torch.nn.Linear(self.patch_size, self.emb_dim)
+        return linear(patches)
+    
+class EncoderBlock(PatchEmbed):
+    
+    def __init__(self, patch: torch.Tensor, d_model: int = 768, d_k:int = 32):
+        self._patch = patch
+        self.d_model = d_model
+        self.d_k = d_k
+        super().__init__(patch)
+        self.patch_vectors = self._patch.unsqueeze(0)
+        self._W_Q = torch.nn.Linear(d_model, d_k, bias=False)
+        self._W_K = torch.nn.Linear(d_model, d_k, bias=False)
+        self._W_V = torch.nn.Linear(d_model, d_k, bias=False)
+        self.Q = self._W_Q(self.patch_vectors)
+        self.K = self._W_K(self.patch_vectors)
+        self.V = self._W_V(self.patch_vectors)
+        
+    def _get_attention_matrix(self) -> torch.Tensor:
+        scores = (np.dot(self.Q, self.K.T)) / (self.d_k ** 0.5)
+        return torch.softmax(scores, dim=-1)
+    
+    def encode(self):
+        A: torch.Tensor = self._get_attention_matrix()
+        Z: torch.Tensor = np.dot(A, self.V)
