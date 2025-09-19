@@ -47,13 +47,16 @@ class PatchEmbed:
         linear = torch.nn.Linear(self.patch_size, self.emb_dim)
         return linear(patches)
     
-class EncoderBlock(PatchEmbed):
+class EncoderBlock():
+    
+    """
+    Encodes a latent patch tensor into a token matrix.
+    """
     
     def __init__(self, patch: torch.Tensor, d_model: int = 768, d_k:int = 32):
         self._patch = patch
         self.d_model = d_model
         self.d_k = d_k
-        super().__init__(patch)
         self.patch_vectors = self._patch.unsqueeze(0)
         self._W_Q = torch.nn.Linear(d_model, d_k, bias=False)
         self._W_K = torch.nn.Linear(d_model, d_k, bias=False)
@@ -66,6 +69,7 @@ class EncoderBlock(PatchEmbed):
         scores = (np.dot(self.Q, self.K.T)) / (self.d_k ** 0.5)
         return torch.softmax(scores, dim=-1)
     
-    def encode(self):
+    def encode(self) -> torch.Tensor:
         A: torch.Tensor = self._get_attention_matrix()
         Z: torch.Tensor = np.dot(A, self.V)
+        return Z
