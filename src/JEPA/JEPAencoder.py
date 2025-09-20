@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 
 class PatchEmbed:
     
@@ -66,10 +65,10 @@ class EncoderBlock():
         self.V = self._W_V(self.patch_vectors)
         
     def _get_attention_matrix(self) -> torch.Tensor:
-        scores = (np.dot(self.Q, self.K.T)) / (self.d_k ** 0.5)
+        scores = (self.Q @ self.K.T) / (self.d_k ** 0.5)
         return torch.softmax(scores, dim=-1)
     
     def encode(self) -> torch.Tensor:
         A: torch.Tensor = self._get_attention_matrix()
-        Z: torch.Tensor = np.dot(A, self.V)
+        Z: torch.Tensor = A @ self.v 
         return Z
