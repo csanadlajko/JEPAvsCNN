@@ -16,6 +16,8 @@ class Mask(object):
         min_keep=4,
         max_tries=50
     ):
+        if isinstance(input_size, int):
+            input_size = (input_size, input_size)
         self.height = input_size[0] // patch_size
         self.width = input_size[1] // patch_size
         self.patch_size = patch_size
@@ -54,12 +56,11 @@ class Mask(object):
         num_patches = max(num_patches, self.min_keep)
         
         v = torch.rand(1, generator=generator).item()
-        
         min_asp_ratio, max_asp_ratio = ascpect_ratio_scale
         aspect_ratio = min_asp_ratio + v * (max_asp_ratio - min_asp_ratio)
         
-        h = int(round(num_patches * aspect_ratio))
-        w = int(round(num_patches / aspect_ratio))
+        h = int(round(math.sqrt((num_patches * aspect_ratio))))
+        w = int(round(math.sqrt((num_patches / aspect_ratio))))
         h = min(h, self.height - 1)
         w = min(w, self.width - 1)
         h = max(h, 1)
@@ -70,8 +71,8 @@ class Mask(object):
         H, W = occ.shape
         tries = 0
         while tries < self.max_tries:
-            top = torch.randint(0, H - h, (1,)).item()
-            left = torch.randint(0, W- w, (1,)).item()
+            top = torch.randint(0, H - h + 1, (1,)).item()
+            left = torch.randint(0, W- w + 1, (1,)).item()
             cut_region = occ[top:top+h, left:left+w]
             
             if torch.count_nonzero(cut_region) == 0:
@@ -96,7 +97,7 @@ class Mask(object):
         g = torch.Generator()
         g.manual_seed(seed)
         
-        ctx_h, ctx_w = self._sample_block_size(g, self.ctx_mask_scale, (1, 1))
+        ctx_h, ctx_w = self._sample_block_size(g, self.ctx_mask_scale, (1., 1.))
         target_h, target_w = self._sample_block_size(g, self.targ_mask_scale, self.aspect_ratio)
         
         all_mask_ctx, all_mask_target = [], []
@@ -115,24 +116,25 @@ class Mask(object):
             cmask = None
             
             while tries < self.max_tries:
-                top = torch.randint(0, self.height - ctx_h, (1,)).item()
-                left = torch.randint(0, self.width - ctx_w, (1,)).item()
+                top = torch.randint(0, self.height - ctx_h + 1, (1,)).item()
+                left = torch.randint(0, self.width - ctx_w + 1, (1,)).item()
                 region = free[top:top+ctx_h, left:left+ctx_w]
                 if torch.all(region == 1):
                     cmask2d = torch.zeros((self.height, self.width), dtype=torch.int32)
-                    cmask2d[top:top+ctx_h, left:left:ctx_w] = 1
+                    cmask2d[top:top+ctx_h, left:left+ctx_w] = 1
                     cmask = torch.nonzero(cmask2d.flatten(), as_tuple=False).squeeze()
                     break
                 tries += 1
             
             if cmask is None:
                 ## using fallback
-                free_idx = torch.nonzero(free.flatten(), as_tuple=False).squeeze()
-                if free_idx.numel() == 0:
+                free_idx = torch.nonzero(free.flatten(), as_tuple=False).view(-1)
+                n_free = free_idx.numel()
+                if n_free == 0:
                     cmask = torch.randperm(self.height * self.width)[:max(self.min_keep, ctx_h * ctx_w // 2)]
                 else:
-                    perm = torch.randperm(free.numel())
-                    take = max(self.min_keep, min (ctx_h *ctx_w, free_idx.numel()))
+                    perm = torch.randperm(n_free)
+                    take = max(self.min_keep, min(ctx_h *ctx_w, n_free))
                     cmask = free_idx[perm[:take]]
                     
             all_mask_target.append(target_mask)
@@ -141,3 +143,37 @@ class Mask(object):
         coll_target_masks = torch.utils.data.default_collate(all_mask_target)
         coll_ctx_masks = torch.utils.data.default_collate(all_mask_ctx)
         return collated_batch, coll_ctx_masks, coll_target_masks
+    
+class MaskTest(Mask):
+    
+    def __init__(self):
+        self.mask = Mask(
+            input_size=128,
+            patch_size=16,
+            nctx=1,
+            ntarg=3,
+            targ_mask_scale=(0.15, 0.15),
+            ctx_mask_scale=(0.85, 0.85),
+            aspect_ratio=(0.75, 1.5),
+            min_keep=4,
+            max_tries=60
+        )
+        self.dummy_data = [(torch.randn(3, 128, 128), 0) for _ in range(2)]
+        
+    def __test__(self):
+        
+        print("---TESTING STARTED---")
+        
+        print(self.dummy_data)
+        
+        _, mask_ctx, mask_target = self.mask(self.dummy_data)
+        
+        print("---MASKING RESULTS---")
+        
+        print(f"CONTEXT: {mask_ctx[0][0]}")
+        print(f"TARGET_1: {mask_target[0][0]}")
+        print(f"TARGET_2: {mask_target[0][1]}")
+        
+t1 = MaskTest()
+
+t1.__test__()
