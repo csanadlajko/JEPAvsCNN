@@ -162,17 +162,17 @@ class MaskTest(Mask):
         
     def __test__(self):
         
-        print("---TESTING STARTED---")
+        print("---TESTING STARTED---\n")
         
         print(self.dummy_data)
         
         _, mask_ctx, mask_target = self.mask(self.dummy_data)
         
-        print("---MASKING RESULTS---")
+        print("---MASKING RESULTS---\n")
         
-        print(f"CONTEXT: {mask_ctx[0][0]}")
-        print(f"TARGET_1: {mask_target[0][0]}")
-        print(f"TARGET_2: {mask_target[0][1]}")
+        print(f"CONTEXT: {mask_ctx[0][0]}\n")
+        print(f"TARGET_1: {mask_target[0][0]}\n")
+        print(f"TARGET_2: {mask_target[0][1]}\n")
         
 t1 = MaskTest()
 
