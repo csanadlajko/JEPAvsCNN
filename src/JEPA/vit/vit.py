@@ -1,15 +1,16 @@
 import torch.nn as nn
 import torch
+import copy
 
 ## hyperparameters
 
 DEPTH = 6
 DROP_RATE = 0.1
-BATCH_SIZE = 128
+BATCH_SIZE = 32
 CHANNELS = 3
 EMBED_DIM = 256
-IMG_SIZE = 32
-PATCH_SIZE = 4
+IMG_SIZE = 128
+PATCH_SIZE = 16
 MLP_DIM = 512
 NUM_HEADS = 8
 EPOCHS = 10
@@ -99,7 +100,7 @@ class VisionTransformer(nn.Module):
         cls_token = x[:, 0]
         return cls_token # return self.head(cls_token) when classification
 
-model = VisionTransformer(
+teacher_model = VisionTransformer(
     img_size=IMG_SIZE,
     patch_size=PATCH_SIZE,
     in_chans=CHANNELS,
@@ -109,3 +110,5 @@ model = VisionTransformer(
     mlp_dim=MLP_DIM,
     drop_rate=DROP_RATE
 )
+
+student_model = copy.deepcopy(teacher_model)
