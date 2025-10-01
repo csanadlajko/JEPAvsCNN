@@ -35,6 +35,53 @@ class PatchEmbed(nn.Module):
         x = self.proj(x).flatten(2).transpose(1, 2)
         return x
     
+
+class TransformerEncoder(nn.Module):
+    
+    def __init__(self, num_heads, embed_dim, mlp_dim, drop=0.):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(embed_dim)
+        self.norm2 = nn.LayerNorm(embed_dim)
+        self.att = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads, dropout=drop, batch_first=True)
+        self.mlp = MLP(embed_dim, embed_dim*4, mlp_dim, nn.GELU, drop)
+
+
+    def forward(self, x):
+        x = x + self.att(self.norm1(x), self.norm1(x), self.norm1(x))
+        x = x + self.mlp(self.norm2(x))
+        return x
+    
+class VisionTransformer(nn.Module):
+    
+    def __init__(self, img_size, patch_size, in_chans, embed_dim, num_heads, depth, mlp_dim, drop_rate):
+        super().__init__()
+        self.patch_embed = PatchEmbed(
+            img_size=img_size,
+            patch_size=patch_size,
+            in_chans=in_chans,
+            embed_dim=embed_dim
+        )
+        self.encoder = nn.Sequential([
+            TransformerEncoder(
+                num_heads=num_heads,
+                embed_dim=embed_dim,
+                mlp_dim=mlp_dim,
+                drop=drop_rate
+            )
+            for _ in range(6)
+        ])
+        self.norm = nn.LayerNorm(embed_dim)
+        
+        # optional -> head to predict classes (nn.Linear(embed_dim, num_classes))
+        
+    def forward(self, x):
+        x = self.patch_embed(x)
+        x = self.encoder(x)
+        x = self.norm(x)
+        cls_token = x[:, 0]
+        return cls_token # return self.head(cls_token) when classification
+        
+    
 class ViTInput(nn.Module):
     
     def __init__(self, patch_embed):
@@ -69,8 +116,6 @@ class InputTest:
         print("-----STARTING VIT TRANSFORM-----")
         out = self.vit_input(self.img)
         print("-----VIT TRANSFORM FINISHED-----")
-        
-        print(out)
         
 t2 = InputTest()
 t2.__test__()
