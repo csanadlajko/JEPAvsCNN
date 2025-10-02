@@ -6,7 +6,7 @@ class Mask(object):
     
     def __init__(
         self,
-        input_size=(224, 224),
+        input_size=(128, 128),
         patch_size=16,
         nctx=1,
         ntarg=2,
@@ -92,7 +92,9 @@ class Mask(object):
     
     def __call__(self, batch):
         B = len(batch)
-        collated_batch = torch.utils.data.default_collate(batch)
+        if isinstance(batch, torch.Tensor):
+            collated_batch = batch
+        else: collated_batch = torch.utils.data.default_collate(batch)
         seed = self.step()
         g = torch.Generator()
         g.manual_seed(seed)
@@ -140,40 +142,14 @@ class Mask(object):
             all_mask_target.append(target_mask)
             all_mask_ctx.append([cmask])
             
-        coll_target_masks = torch.utils.data.default_collate(all_mask_target)
-        coll_ctx_masks = torch.utils.data.default_collate(all_mask_ctx)
-        return collated_batch, coll_ctx_masks, coll_target_masks
-    
-class MaskTest(Mask):
-    
-    def __init__(self):
-        self.mask = Mask(
-            input_size=128,
-            patch_size=16,
-            nctx=1,
-            ntarg=3,
-            targ_mask_scale=(0.15, 0.15),
-            ctx_mask_scale=(0.85, 0.85),
-            aspect_ratio=(0.75, 1.5),
-            min_keep=4,
-            max_tries=60
-        )
-        self.dummy_data = [(torch.randn(3, 128, 128), 0) for _ in range(2)]
+        masked_ctx_batch = batch.clone()
+        masked_target_batch = batch.clone()
         
-    def __test__(self):
-        
-        print("---TESTING STARTED---\n")
-        
-        print(self.dummy_data)
-        
-        _, mask_ctx, mask_target = self.mask(self.dummy_data)
-        
-        print("---MASKING RESULTS---\n")
-        
-        print(f"CONTEXT: {mask_ctx[0][0]}\n")
-        print(f"TARGET_1: {mask_target[0][0]}\n")
-        print(f"TARGET_2: {mask_target[0][1]}\n")
-        
-t1 = MaskTest()
-
-t1.__test__()
+        for i in range(B):
+            ctx_idx = all_mask_ctx[i][0] + 1
+            targ_id_list = all_mask_target[i]
+            
+            masked_ctx_batch[i, ctx_idx, :] = 0
+            target_idx = torch.cat([idx for idx in targ_id_list]) + 1
+            masked_target_batch[i, target_idx, :] = 0
+        return collated_batch, masked_ctx_batch, masked_target_batch

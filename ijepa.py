@@ -1,6 +1,6 @@
 from src.JEPA.mask.masking import Mask
 from src.JEPA.transform.datatransform import train_loader, test_loader
-from src.JEPA.vit.vit import VisionTransformer
+from src.JEPA.vit.vit import VisionTransformer, PatchEmbed, PredictionHead
 from src.JEPA.vit.vit import teacher_model, student_model
 import torch.nn as nn
 import torch
@@ -9,35 +9,44 @@ import torch
 LEARNING_RATE = 0.003
 
 loss = nn.MSELoss()
-optim = torch.optim.Adam(params=teacher_model.parameters(), lr=LEARNING_RATE)
-total_loss = 0
+optim = torch.optim.Adam(params=student_model.parameters(), lr=LEARNING_RATE)
 mask = Mask()
+pred_head = PredictionHead(student_dim=256, teacher_dim=256)
+
+@torch.no_grad()
+def _ema_update(teacher_mod, student_mod, momentum=0.996):
+    for t_param, s_param in zip(teacher_mod.parameters(), student_mod.parameters()):
+        t_param.data.mul_(momentum).add_(s_param.data, alpha=1.0 - momentum)
 
 def train(teacher_mod, student_mod, loader, optimizer):
-    teacher_mod.train()
+    teacher_mod.eval()
+    student_mod.train()
     
     print("---STARTING TRAINING---")
+    total_loss = 0.0
     
     for x, _ in loader:
-        ## MASKING WORKING FAULTY, NOT RETURNING CORRECT SHAPE
-        batch, ctx_mask, target_mask = mask(x)
-        
+        with torch.no_grad():
+            teacher_tokens = teacher_mod.patch_embed(x)
+        batch_tokens, ctx_tokens, target_tokens = mask(teacher_tokens)
+
         optimizer.zero_grad()
+
+        with torch.no_grad():
+            teacher_ctx = teacher_mod(ctx_tokens)
+        student_targ = student_mod(target_tokens)
         
-                
-        ctx_out = teacher_mod(ctx_mask[0])
-        target_out = student_mod(target_mask[0])
-        
-        print(ctx_out)
-        loss_curr = loss(ctx_out, target_out)
+        predicted = pred_head(student_targ)
+
+        loss_curr = loss(teacher_ctx, predicted)
         loss_curr.backward()
-        
-        total_loss += loss_curr.item() * x.size(0)
+        optimizer.step()
+        _ema_update(teacher_mod, student_mod)
+        total_loss = total_loss + loss_curr.item() * x.size(0)
         
     print("---TRAINING ENDED---")
     return total_loss / len(loader.dataset)
 
 if __name__ == "__main__":
-    
     train(teacher_model, student_model, train_loader, optim)
     

@@ -54,7 +54,6 @@ class PatchEmbed(nn.Module):
         x = x + self.pos_embed
         return x
     
-
 class TransformerEncoder(nn.Module):
     
     def __init__(self, num_heads, embed_dim, mlp_dim, drop=0.):
@@ -62,11 +61,12 @@ class TransformerEncoder(nn.Module):
         self.norm1 = nn.LayerNorm(embed_dim)
         self.norm2 = nn.LayerNorm(embed_dim)
         self.att = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads, dropout=drop, batch_first=True)
-        self.mlp = MLP(embed_dim, embed_dim*4, mlp_dim, nn.GELU, drop)
+        self.mlp = MLP(in_features=embed_dim, hidden_features=mlp_dim, out_features=embed_dim, act_layer=nn.GELU, drop=drop)
 
 
     def forward(self, x):
-        x = x + self.att(self.norm1(x), self.norm1(x), self.norm1(x))
+        attn_output, _ = self.att(self.norm1(x), self.norm1(x), self.norm1(x))
+        x = x + attn_output
         x = x + self.mlp(self.norm2(x))
         return x
     
@@ -94,11 +94,26 @@ class VisionTransformer(nn.Module):
         # optional -> head to predict classes (nn.Linear(embed_dim, num_classes))
         
     def forward(self, x):
-        x = self.patch_embed(x)
+        if x.dim() == 4:
+            x = self.patch_embed(x)
         x = self.encoder(x)
         x = self.norm(x)
-        cls_token = x[:, 0]
-        return cls_token # return self.head(cls_token) when classification
+        # cls_token = x[:, 0] -> return only cls token if needed
+        return x # return self.head(cls_token) when classification
+
+class PredictionHead(nn.Module):
+    
+    def __init__(self, student_dim, hidden_feature=None, teacher_dim=None, drop=0., act=nn.GELU):
+        super().__init__()
+        self.student_dim = student_dim
+        self.hidden_feature = hidden_feature or student_dim * 2
+        self.teacher_dim = teacher_dim
+        self.mlp = MLP(in_features=student_dim, hidden_features=hidden_feature, out_features=teacher_dim, act_layer=act, drop=drop)
+
+    def forward(self, x):
+        x = self.mlp(x)
+        return x
+    
 
 teacher_model = VisionTransformer(
     img_size=IMG_SIZE,
