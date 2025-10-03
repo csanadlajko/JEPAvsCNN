@@ -1,20 +1,21 @@
 from src.JEPA.mask.masking import Mask
-from src.JEPA.transform.datatransform import train_loader, test_loader
-from src.JEPA.vit.vit import VisionTransformer, PatchEmbed, PredictionHead
+from src.JEPA.transform.datatransform import train_loader
+from src.JEPA.vit.vit import PredictionHead
 from src.JEPA.vit.vit import teacher_model, student_model
 import torch.nn as nn
 import torch
+import json
 
-
-LEARNING_RATE = 0.003
+file = open("parameters.json")
+parameters: dict[str, int] = json.load(file)
 
 loss = nn.MSELoss()
-optim = torch.optim.Adam(params=student_model.parameters(), lr=LEARNING_RATE)
+optim = torch.optim.Adam(params=student_model.parameters(), lr=parameters["LEARNING_RATE"])
 mask = Mask()
-pred_head = PredictionHead(student_dim=256, teacher_dim=256)
+pred_head = PredictionHead(student_dim=parameters["EMBED_DIM"], teacher_dim=parameters["EMBED_DIM"])
 
 @torch.no_grad()
-def _ema_update(teacher_mod, student_mod, momentum=0.996):
+def _ema_update(teacher_mod, student_mod, momentum=parameters["MOMENTUM"]):
     for t_param, s_param in zip(teacher_mod.parameters(), student_mod.parameters()):
         t_param.data.mul_(momentum).add_(s_param.data, alpha=1.0 - momentum)
 
@@ -43,6 +44,8 @@ def train(teacher_mod, student_mod, loader, optimizer):
         optimizer.step()
         _ema_update(teacher_mod, student_mod)
         total_loss = total_loss + loss_curr.item() * x.size(0)
+        
+        print(f"Iteration ended with loss: {loss_curr:.4f}")
         
     print("---TRAINING ENDED---")
     return total_loss / len(loader.dataset)

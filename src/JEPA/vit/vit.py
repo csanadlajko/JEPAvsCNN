@@ -1,19 +1,23 @@
 import torch.nn as nn
 import torch
 import copy
+import json
+
+file = open("././parameters.json")
+parameters: dict[str, int] = json.load(file)
 
 ## hyperparameters
 
-DEPTH = 6
-DROP_RATE = 0.1
-BATCH_SIZE = 32
-CHANNELS = 3
-EMBED_DIM = 256
-IMG_SIZE = 128
-PATCH_SIZE = 16
-MLP_DIM = 512
-NUM_HEADS = 8
-EPOCHS = 10
+DEPTH = parameters["DEPTH"]
+DROP_RATE = parameters["DROP_RATE"]
+BATCH_SIZE = parameters["BATCH_SIZE"]
+CHANNELS = parameters["CHANNELS"]
+EMBED_DIM = parameters["EMBED_DIM"]
+IMG_SIZE = parameters["IMAGE_SIZE"]
+PATCH_SIZE = parameters["PATCH_SIZE"]
+MLP_DIM = parameters["MLP_DIM"]
+NUM_HEADS = parameters["NUM_HEADS"]
+EPOCHS = parameters["EPOCHS"]
 
 class MLP(nn.Module):
     
@@ -35,7 +39,7 @@ class MLP(nn.Module):
     
 class PatchEmbed(nn.Module):
     
-    def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768):
+    def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=EMBED_DIM):
         super().__init__()
         self.img_size = img_size
         self.embed_dim = embed_dim
@@ -62,7 +66,6 @@ class TransformerEncoder(nn.Module):
         self.norm2 = nn.LayerNorm(embed_dim)
         self.att = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads, dropout=drop, batch_first=True)
         self.mlp = MLP(in_features=embed_dim, hidden_features=mlp_dim, out_features=embed_dim, act_layer=nn.GELU, drop=drop)
-
 
     def forward(self, x):
         attn_output, _ = self.att(self.norm1(x), self.norm1(x), self.norm1(x))

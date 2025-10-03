@@ -1,15 +1,19 @@
 import math
 from multiprocessing import Value
 import torch
+import json
+
+file = open("././parameters.json")
+parameters: dict[str, int] = json.load(file)
 
 class Mask(object):
     
     def __init__(
         self,
-        input_size=(128, 128),
-        patch_size=16,
+        input_size=(parameters["IMAGE_SIZE"], parameters["IMAGE_SIZE"]),
+        patch_size=parameters["PATCH_SIZE"],
         nctx=1,
-        ntarg=2,
+        ntarg=parameters["NUM_TARGET_BLOCKS"],
         targ_mask_scale=(0.15, 0.15),
         ctx_mask_scale=(0.85, 0.85),
         aspect_ratio=(0.75, 1.5),
