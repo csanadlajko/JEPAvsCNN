@@ -6,6 +6,10 @@ import torch.nn as nn
 import torch
 import json
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+print(f"Using device: {device}")
+
 file = open("parameters.json")
 parameters: dict[str, int] = json.load(file)
 
@@ -13,6 +17,10 @@ loss = nn.MSELoss()
 optim = torch.optim.Adam(params=student_model.parameters(), lr=parameters["LEARNING_RATE"])
 mask = Mask()
 pred_head = PredictionHead(student_dim=parameters["EMBED_DIM"], teacher_dim=parameters["EMBED_DIM"])
+
+teacher_model.to(device)
+student_model.to(device)
+pred_head.to(device)
 
 @torch.no_grad()
 def _ema_update(teacher_mod, student_mod, momentum=parameters["MOMENTUM"]):
@@ -27,6 +35,8 @@ def train(teacher_mod, student_mod, loader, optimizer):
     total_loss = 0.0
     
     for x, _ in loader:
+        x = x.to(device)
+        
         with torch.no_grad():
             teacher_tokens = teacher_mod.patch_embed(x)
         batch_tokens, ctx_tokens, target_tokens = mask(teacher_tokens)
