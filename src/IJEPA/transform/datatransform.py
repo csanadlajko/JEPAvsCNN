@@ -3,7 +3,7 @@ from torchvision import datasets, transforms
 import json
 
 file = open("././parameters.json")
-parameters: dict[str, int] = json.load(file)
+parameters: dict[str, int] = json.load(file)["ijepa"]
 
 transform = transforms.Compose([
     transforms.Resize((parameters["IMAGE_SIZE"], parameters["IMAGE_SIZE"])),

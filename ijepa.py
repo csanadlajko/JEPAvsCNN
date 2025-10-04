@@ -11,7 +11,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
 file = open("parameters.json")
-parameters: dict[str, int] = json.load(file)
+parameters: dict[str, int] = json.load(file)["ijepa"]
 
 loss = nn.MSELoss()
 optim = torch.optim.Adam(params=student_model.parameters(), lr=parameters["LEARNING_RATE"])

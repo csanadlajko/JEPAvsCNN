@@ -4,7 +4,7 @@ import copy
 import json
 
 file = open("././parameters.json")
-parameters: dict[str, int] = json.load(file)
+parameters: dict[str, int] = json.load(file)["ijepa"]
 
 ## hyperparameters
 
