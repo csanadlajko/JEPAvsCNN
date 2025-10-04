@@ -1,2 +1,2 @@
-# JEPAvsCNN
-Comparing JEPA to other simple feature extraction models suchs as the CNN.
+# jepa-lightweight
+Implementing and evaluating lightweight JEPA models. 
