@@ -1,7 +1,7 @@
-from src.JEPA.mask.masking import Mask
-from src.JEPA.transform.datatransform import train_loader
-from src.JEPA.vit.vit import PredictionHead
-from src.JEPA.vit.vit import teacher_model, student_model
+from src.IJEPA.mask.masking import Mask
+from src.IJEPA.transform.datatransform import train_loader
+from src.IJEPA.vit.vit import PredictionHead
+from src.IJEPA.vit.vit import teacher_model, student_model
 import torch.nn as nn
 import torch
 import json
