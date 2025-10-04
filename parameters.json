@@ -1,15 +1,21 @@
 {
-    "DEPTH": 6,
-    "DROP_RATE": 0.1,
-    "CHANNELS": 3,
-    "EMBED_DIM": 256,
-    "IMAGE_SIZE": 128,
-    "PATCH_SIZE": 16,
-    "MLP_DIM": 512,
-    "EPOCHS": 10,
-    "NUM_HEADS": 2,
-    "BATCH_SIZE": 32,
-    "LEARNING_RATE": 0.003,
-    "MOMENTUM": 0.996,
-    "NUM_TARGET_BLOCKS": 2
+    "ijepa": {
+        "DEPTH": 6,
+        "DROP_RATE": 0.1,
+        "CHANNELS": 3,
+        "EMBED_DIM": 256,
+        "IMAGE_SIZE": 128,
+        "PATCH_SIZE": 16,
+        "MLP_DIM": 512,
+        "EPOCHS": 10,
+        "NUM_HEADS": 2,
+        "BATCH_SIZE": 32,
+        "LEARNING_RATE": 0.003,
+        "MOMENTUM": 0.996,
+        "NUM_TARGET_BLOCKS": 2
+    },
+    "llmjepa": {
+        "LEARNING_RATE": 0.01,
+        "MOMENTUM": 0.996
+    }
 }

@@ -5,7 +5,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 class MiniLLMJEPA:
     
-    def __init__(self, model_name="microsoft/DialoGPT-small", gamma_lm=1.0, lambda_jepa = 0.1):
+    def __init__(self, model_name="gpt2", gamma_lm=1.0, lambda_jepa = 0.1):
         self.encoder = AutoModelForCausalLM.from_pretrained(model_name)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.gamma_lm = gamma_lm
