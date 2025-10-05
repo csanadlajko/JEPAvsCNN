@@ -16,6 +16,8 @@
     },
     "llmjepa": {
         "LEARNING_RATE": 0.01,
-        "MOMENTUM": 0.996
+        "MOMENTUM": 0.996,
+        "PRED_TOKENS": 1,
+        "MODEL_NAME": "gpt2"
     }
 }
