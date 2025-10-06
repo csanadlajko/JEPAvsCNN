@@ -1,7 +1,6 @@
 from transformers import (
     AutoModelForCausalLM, 
     AutoTokenizer,
-    Trainer
 )
 import torch
 import json
@@ -11,12 +10,14 @@ file = open("././parameters.json")
 paramters: dict[str, Any] = json.load(file)["llmjepa"]
 MODEL_NAME = paramters["MODEL_NAME"]
 NUM_PRED_TOKENS = paramters["PRED_TOKENS"]
+LM_GAMMA = paramters["LM_GAMMA"]
+JEPA_LAMBDA = paramters["JEPA_LAMBDA"]
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-class TextEncoder(Trainer):
+class TextEncoder:
     
-    def __init__(self, model_name=MODEL_NAME, pred_tokens=NUM_PRED_TOKENS):
+    def __init__(self, model_name=MODEL_NAME, pred_tokens=NUM_PRED_TOKENS, gamma=LM_GAMMA, jp_lambda=JEPA_LAMBDA):
         super().__init__()
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         new_tokens = [f"<|predictor_{i+1}|>" for i in range(pred_tokens)]
@@ -24,6 +25,8 @@ class TextEncoder(Trainer):
         self.tokenizer.add_special_tokens({"additional_special_tokens": new_tokens})
         self.encoder = AutoModelForCausalLM.from_pretrained(model_name)
         self.encoder.resize_token_embeddings(len(self.tokenizer))
+        self.gamma = gamma
+        self.jp_lambda = jp_lambda
         
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -61,7 +64,7 @@ class TextEncoder(Trainer):
                 truncation=True,
                 max_length=max_length,
                 padding="max_length",
-                return_tensors=None
+                return_tensors="pt"
             )
             
             input_ids = tokenized_full["input_ids"]
@@ -83,12 +86,12 @@ class TextEncoder(Trainer):
                 truncation=True,
                 max_length=max_length,
                 padding="max_length",
-                return_tensors=None
+                return_tensors="pt"
             )
             
             user_input_ids.append(tokenized_user["input_ids"])
             user_attention_masks.append(tokenized_user["attention_mask"])
-            user_labels.append([-100] * len(tokenized_user["input_ids"])) # disregarding in LM loss
+            user_labels.append(torch.full_like(tokenized_user["input_ids"], fill_value=-100)) # disregarding in LM loss
             
             assistant_message = message["assistant_msg"]
             tokenized_assistant = self.tokenizer(
@@ -96,36 +99,36 @@ class TextEncoder(Trainer):
                 truncation=True,
                 max_length=max_length,
                 padding="max_length",
-                return_tensors=None
+                return_tensors="pt"
             )
             
             assistant_input_ids.append(tokenized_assistant["input_ids"])
             assistant_attention_masks.append(tokenized_assistant["attention_mask"])
-            assistant_labels.append([-100] * len(tokenized_assistant["input_ids"])) # disregarding in LM loss
+            assistant_labels.append(torch.full_like(tokenized_assistant["input_ids"], fill_value=-100)) # disregarding in LM loss
             
         return {
-            "input_ids": full_input_ids,
-            "attention_mask": full_att_masks,
-            "labels": full_labels,
-            "user_input_ids": user_input_ids,
-            "user_attention_mask": user_attention_masks,
-            "assistant_input_ids": assistant_input_ids,
-            "assistant_attention_mask": assistant_attention_masks,
-            "user_labels": user_labels,
-            "assistant_labels": assistant_labels
+            "input_ids": torch.cat(full_input_ids, dim=0),
+            "attention_mask": torch.cat(full_att_masks, dim=0),
+            "labels": torch.cat(full_labels, dim=0),
+            "user_input_ids": torch.cat(user_input_ids, dim=0),
+            "user_attention_mask": torch.cat(user_attention_masks, dim=0),
+            "assistant_input_ids": torch.cat(assistant_input_ids, dim=0),
+            "assistant_attention_mask": torch.cat(assistant_attention_masks, dim=0),
+            "user_labels": torch.cat(user_labels, dim=0),
+            "assistant_labels": torch.cat(assistant_labels, dim=0)
         }
         
     def create_labels(self, input_ids, attention_mask):
-        labels = []
-        for i, mask in enumerate(attention_mask):
-            if mask == 0:
-                labels.append(-100)
-            else: labels.append(input_ids[i])
+        labels = input_ids.clone()
+        labels[attention_mask == 0] = -100
         return labels
     
     
     def forward(self, dataset):
         tokenized_conv = self.tokenize_conversation(dataset)
+        
+        last_user_index = self._last_token_index(tokenized_conv["user_attention_mask"])
+        last_assistant_index = self._last_token_index(tokenized_conv["assistant_attention_mask"])
         
         llm_input = {
             "input_ids": torch.cat([
@@ -145,35 +148,52 @@ class TextEncoder(Trainer):
             ], dim=0)
         }
         
+        first_dim = tokenized_conv["user_input_ids"].shape[0]
+        
         output = self.encoder(**llm_input, output_hidden_states=True)
         
         batch_size = llm_input["input_ids"].shape[0] // 3 # as we gave full, user, assistant in the same input
-        user_hidden_states = output[batch_size: batch_size*2] # data hidden states from 1/3 to 2/3 (corresponding to user)
-        assistant_hidden_states = output[batch_size*2:] # data hidden states from 2/3 to 3/3 (corresponding to assistant)
+        user_hidden_states = output.hidden_states[-1][batch_size: batch_size*2] # data hidden states from 1/3 to 2/3 (corresponding to user)
+        assistant_hidden_states = output.hidden_states[-1][batch_size*2:] # data hidden states from 2/3 to 3/3 (corresponding to assistant)
         
         return {
             "main_output": output,
             "user_hidden_states": user_hidden_states,
-            "assistant_hidden_states": assistant_hidden_states
+            "assistant_hidden_states": assistant_hidden_states,
+            "last_user_index": last_user_index,
+            "last_assistant_index": last_assistant_index,
+            "first_dim": first_dim
         }
-
-    
-    # def _last_token_index(self, input_ids, attention_mask):
-    #     last_token_id = 0
-    #     for id, mask in zip(input_ids, attention_mask):
-    #         if mask != 0:
-    #             last_token_id = id
-    #             break
-    #     return last_token_id
-                
-    
-    # def forward(self, dataset):
         
-    #     tokenized_conv = self.tokenize_conversation(dataset)
-    #     full_input_ids = tokenized_conv["input_ids"]
-    #     full_att_masks = tokenized_conv["attention_mask"]
-    #     user_input_ids = tokenized_conv["user_input_ids"]
-    #     user_att_masks = tokenized_conv["user_attention_mask"]
-    #     last_user_id = self._last_token_index(user_input_ids, user_att_masks)
-    #     user_pred_hidden_state = tokenized_conv["tokenized_user"][last_user_id].hidden_state
-    #     assistant_hidden_state = tokenized_conv["tokenized_assistant"].hidden_state
+    def compute_loss(self, dataset):
+        encoded_data = self.forward(dataset)
+        first_dim = encoded_data["first_dim"]
+        
+        main_output = encoded_data["main_output"]
+        lm_loss = main_output.loss
+        
+        user_last_token_idx = encoded_data["last_user_index"]
+        assistant_last_token_idx = encoded_data["last_assistant_index"]
+        user_pred_embed = encoded_data["user_hidden_states"][range(first_dim), user_last_token_idx, :]
+        assistant_last_token_embed = encoded_data["assistant_hidden_states"][range(first_dim), assistant_last_token_idx, :]
+        
+        cos_sim = torch.cosine_similarity(user_pred_embed, assistant_last_token_embed)
+        
+        jepa_loss = 1 - torch.mean(cos_sim)
+        
+        total_loss = self.gamma * lm_loss + self.jp_lambda * jepa_loss
+        
+        return total_loss
+        
+    def _last_token_index(self, attention_mask):
+        return (attention_mask.sum(dim=1) - 1).long() ## returns last index before padding starts
+                
+dummy_file = open("././dummy.json")
+
+dummy_dict = json.load(dummy_file)
+
+enc = TextEncoder()
+
+total_loss = enc.compute_loss(dummy_dict)
+
+print(f"Loss after one iteration: {total_loss}")
