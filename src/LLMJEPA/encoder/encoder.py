@@ -1,6 +1,7 @@
 from transformers import (
     AutoModelForCausalLM, 
     AutoTokenizer,
+    Trainer
 )
 import torch
 import json
@@ -15,18 +16,18 @@ JEPA_LAMBDA = paramters["JEPA_LAMBDA"]
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-class TextEncoder:
+class TextEncoder(Trainer):
     
-    def __init__(self, model_name=MODEL_NAME, pred_tokens=NUM_PRED_TOKENS, gamma=LM_GAMMA, jp_lambda=JEPA_LAMBDA):
-        super().__init__()
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        new_tokens = [f"<|predictor_{i+1}|>" for i in range(pred_tokens)]
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.tokenizer = AutoTokenizer.from_pretrained(kwargs.pop('model'))
+        new_tokens = [f"<|predictor_{i+1}|>" for i in range(kwargs.pop('pred_tokens'))]
         new_tokens += ["<|perception|>", "<|eot_id|>"]
         self.tokenizer.add_special_tokens({"additional_special_tokens": new_tokens})
-        self.encoder = AutoModelForCausalLM.from_pretrained(model_name)
+        self.encoder = AutoModelForCausalLM.from_pretrained(kwargs.pop('model'))
         self.encoder.resize_token_embeddings(len(self.tokenizer))
-        self.gamma = gamma
-        self.jp_lambda = jp_lambda
+        self.gamma = kwargs.pop('gamma')
+        self.jp_lambda = kwargs.pop('jp_lambda')
         
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -187,13 +188,3 @@ class TextEncoder:
         
     def _last_token_index(self, attention_mask):
         return (attention_mask.sum(dim=1) - 1).long() ## returns last index before padding starts
-                
-dummy_file = open("././dummy.json")
-
-dummy_dict = json.load(dummy_file)
-
-enc = TextEncoder()
-
-total_loss = enc.compute_loss(dummy_dict)
-
-print(f"Loss after one iteration: {total_loss}")
