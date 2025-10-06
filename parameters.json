@@ -18,6 +18,10 @@
         "LEARNING_RATE": 0.01,
         "MOMENTUM": 0.996,
         "PRED_TOKENS": 1,
-        "MODEL_NAME": "gpt2"
+        "MODEL_NAME": "gpt2",
+        "LM_GAMMA": 0.9,
+        "JEPA_LAMBDA": 0.1,
+        "EPOCHS": 3,
+        "BATCH_SIZE": 1
     }
 }
