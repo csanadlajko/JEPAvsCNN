@@ -3,8 +3,10 @@ __pycache__/
 *.py[codz]
 *$py.class
 
-# data folder
+# training output folder
+*outputs
 
+# data folder
 *data
 
 # C extensions
