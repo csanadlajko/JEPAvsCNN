@@ -44,12 +44,12 @@ def train(teacher_mod, student_mod, loader, optimizer):
         optimizer.zero_grad()
 
         with torch.no_grad():
-            teacher_ctx = teacher_mod(ctx_tokens)
-        student_targ = student_mod(target_tokens)
+            teacher_target = teacher_mod(target_tokens)
+        student_ctx = student_mod(ctx_tokens)
         
-        predicted = pred_head(student_targ)
+        predicted = pred_head(student_ctx)
 
-        loss_curr = loss(teacher_ctx, predicted)
+        loss_curr = loss(teacher_target, predicted)
         loss_curr.backward()
         optimizer.step()
         _ema_update(teacher_mod, student_mod)
