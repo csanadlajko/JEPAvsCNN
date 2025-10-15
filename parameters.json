@@ -7,11 +7,11 @@
         "IMAGE_SIZE": 128,
         "PATCH_SIZE": 16,
         "MLP_DIM": 512,
-        "EPOCHS": 10,
+        "EPOCHS": 2,
         "NUM_HEADS": 2,
         "BATCH_SIZE": 32,
-        "LEARNING_RATE": 0.003,
-        "MOMENTUM": 0.996,
+        "LEARNING_RATE": 0.0005,
+        "MOMENTUM": 0.998,
         "NUM_TARGET_BLOCKS": 2
     },
     "llmjepa": {
