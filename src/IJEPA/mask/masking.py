@@ -153,7 +153,9 @@ class Mask(object):
             ctx_idx = all_mask_ctx[i][0] + 1
             targ_id_list = all_mask_target[i]
             
-            masked_ctx_batch[i, ctx_idx, :] = 0
             target_idx = torch.cat([idx for idx in targ_id_list]) + 1
-            masked_target_batch[i, target_idx, :] = 0
+            masked_ctx_batch[i, target_idx, :] = 0  # Mask target tokens
+            
+            masked_target_batch[i, ctx_idx, :] = 0  # Mask context tokens
+            
         return collated_batch, masked_ctx_batch, masked_target_batch
