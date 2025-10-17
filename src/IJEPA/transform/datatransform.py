@@ -8,7 +8,7 @@ parameters: dict[str, int] = json.load(file)["ijepa"]
 transform = transforms.Compose([
     transforms.Resize((parameters["IMAGE_SIZE"], parameters["IMAGE_SIZE"])),
     transforms.ToTensor(),
-    transforms.Normalize(mean=0.5, std=0.5)
+    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
 ])
 
 train_data = datasets.CIFAR10("data", train=True, transform=transform, download=True)

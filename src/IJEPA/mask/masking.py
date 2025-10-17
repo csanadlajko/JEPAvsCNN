@@ -94,7 +94,7 @@ class Mask(object):
         
         return idx, occ
     
-    def __call__(self, batch):
+    def __call__(self, batch, id_only=True):
         B = len(batch)
         if isinstance(batch, torch.Tensor):
             collated_batch = batch
@@ -114,9 +114,9 @@ class Mask(object):
             target_mask = []
             for _ in range(self.ntarg):
                 idx, occ = self._place_block_without_overlap(target_h, target_w, occ)
-                target_mask.append(idx)
+                target_mask.append(idx) # +1 if cls token needed
             
-            free = (occ == 0).to(torch.int32) # create context from target complement
+            free = (occ == 0).to(torch.int32)
             
             tries = 0
             cmask = None
@@ -144,8 +144,11 @@ class Mask(object):
                     cmask = free_idx[perm[:take]]
                     
             all_mask_target.append(target_mask)
-            all_mask_ctx.append([cmask])
+            all_mask_ctx.append(cmask) # +1 if cls token needed
             
+        if id_only:
+            return all_mask_ctx, all_mask_target
+        
         masked_ctx_batch = batch.clone()
         masked_target_batch = batch.clone()
         
@@ -153,7 +156,29 @@ class Mask(object):
             ctx_idx = all_mask_ctx[i][0] + 1
             targ_id_list = all_mask_target[i]
             
-            masked_ctx_batch[i, ctx_idx, :] = 0
             target_idx = torch.cat([idx for idx in targ_id_list]) + 1
-            masked_target_batch[i, target_idx, :] = 0
+            masked_ctx_batch[i, target_idx, :] = 0  # Mask target tokens
+            
+            masked_target_batch[i, ctx_idx, :] = 0  # Mask context tokens
+            
         return collated_batch, masked_ctx_batch, masked_target_batch
+    
+def apply_mask(x, mask_indices):
+    if isinstance(mask_indices, list):
+        all_masked_tokens = []
+        for i, mask_idx in enumerate(mask_indices):
+            if isinstance(mask_idx, list):
+                # enter when selecting target blocks
+                for single_mask in mask_idx:
+                    if single_mask.numel() > 0:
+                        masked_tokens = x[i:i+1].index_select(1, single_mask)
+                        all_masked_tokens.append(masked_tokens)
+            else:
+                # enter when selecting context blocks
+                if mask_idx.numel() > 0:
+                    masked_tokens = x[i:i+1].index_select(1, mask_idx)
+                    all_masked_tokens.append(masked_tokens)
+        
+        return torch.cat(all_masked_tokens, dim=0)
+    else:
+        return x.index_select(1, mask_indices)
