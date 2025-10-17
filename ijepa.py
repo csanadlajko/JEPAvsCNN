@@ -1,11 +1,12 @@
 from src.IJEPA.mask.masking import Mask
 from src.IJEPA.transform.datatransform import train_loader, test_loader
-from src.IJEPA.vit.vit import PredictionHead
+from src.IJEPA.vit.vit import ViTPredictor
 from src.IJEPA.vit.vit import teacher_model, student_model
+from src.IJEPA.mask.masking import apply_mask
 import torch.nn as nn
 import torch
+import torch.nn.functional as F
 import json
-import numpy as np
 import faiss
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -18,11 +19,13 @@ parameters: dict[str, int] = json.load(file)["ijepa"]
 loss = nn.MSELoss()
 optim = torch.optim.Adam(params=student_model.parameters(), lr=parameters["LEARNING_RATE"], weight_decay=1e-4)
 mask = Mask()
-pred_head = PredictionHead(student_dim=parameters["EMBED_DIM"], teacher_dim=parameters["EMBED_DIM"])
+predictor = ViTPredictor(
+    teacher_model.patch_embed.num_patches
+)
 
 teacher_model.to(device)
 student_model.to(device)
-pred_head.to(device)
+predictor.to(device)
 
 TRAIN_EMBEDDINGS = []
 TRAIN_LABELS = []
@@ -37,45 +40,53 @@ def _ema_update(teacher_mod, student_mod, momentum=parameters["MOMENTUM"]):
 def train(teacher_mod, student_mod, loader, optimizer):
     teacher_mod.eval()
     student_mod.train()
+    predictor.train()
 
     print("---STARTING TRAINING---")
     total_loss = 0.0
     num_batches = 0
     
-    for batch_idx, (x, label) in enumerate(loader):
-        x = x.to(device)
-        label = label.to(device)
-
+    for batch_idx, (images, labels) in enumerate(loader):
+        images = images.to(device)
+        labels = labels.to(device)
+        
+        context_masks, target_masks = mask(images) # only indices
+        
         with torch.no_grad():
-            teacher_tokens = teacher_mod.patch_embed(x)
-        batch_tokens, ctx_tokens, target_tokens = mask(teacher_tokens)
-
+            teacher_tokens = teacher_mod(images)
+            teacher_tokens = F.layer_norm(teacher_tokens, (teacher_tokens.size(-1),))
+            teacher_target_tokens = apply_mask(teacher_tokens, target_masks)
+        
+        student_tokens = student_mod(images, context_masks)
+                
+        predicted_target_tokens = predictor(student_tokens, context_masks, target_masks)
+        
         optimizer.zero_grad()
-
-        with torch.no_grad():
-            teacher_target = teacher_mod(target_tokens)
         
-        student_ctx = student_mod(ctx_tokens)
-        
-        predicted = pred_head(student_ctx)
-        loss_curr = loss(predicted, teacher_target)
+        loss_curr = loss(predicted_target_tokens, teacher_target_tokens)
         loss_curr.backward()
-        predicted = predicted.mean(dim=1)
-        teacher_target = teacher_target.mean(dim=1)
-        TRAIN_EMBEDDINGS.append(predicted.cpu())
-        TRAIN_LABELS.append(label.cpu())
+        
+        predicted_embeddings = predicted_target_tokens.mean(dim=1)
+        
+        TRAIN_EMBEDDINGS.append(predicted_embeddings.cpu())
+        TRAIN_LABELS.append(labels.cpu())
         
         optimizer.step()
         _ema_update(teacher_mod, student_mod)
-        total_loss = total_loss + loss_curr.item() * x.size(0)
+        total_loss += loss_curr.item() * images.size(0)
         num_batches += 1
         
-        print(f"Loss: {loss_curr:.4f}")
+        print(f"Batch {batch_idx}, Loss: {loss_curr:.4f}")
         
     print("---TRAINING ENDED---")
-    train_embs = torch.cat(TRAIN_EMBEDDINGS)
-    train_labels = torch.cat(TRAIN_LABELS)
-    avg_loss = total_loss / num_batches
+    if TRAIN_EMBEDDINGS:
+        train_embs = torch.cat(TRAIN_EMBEDDINGS)
+        train_labels = torch.cat(TRAIN_LABELS)
+    else:
+        train_embs = torch.empty(0)
+        train_labels = torch.empty(0)
+    
+    avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
     print(f"Average training loss: {avg_loss:.4f}")
     return train_embs, train_labels
 
@@ -108,12 +119,12 @@ def eval_ijepa(model, test_dataset, train_embs, train_labels):
             for i in range(images.shape[0]):
                 image = images[i:i+1] 
                 label = labels[i:i+1]
+                                
+                ctx_masks, target_masks = mask(image)
                 
-                patch_embed = model.patch_embed(image)
+                ctx_embedding = model(image, ctx_masks)
                 
-                _, ctx_masks, _ = mask(patch_embed)
-                ctx_embedding = model(ctx_masks)
-                predicted_target_embedding = pred_head(ctx_embedding)
+                predicted_target_embedding = predictor(ctx_embedding, ctx_masks, target_masks)
                 predicted_target_embedding = predicted_target_embedding.mean(dim=1)
                 
                 query_emb = predicted_target_embedding.detach().cpu().numpy().astype('float32')

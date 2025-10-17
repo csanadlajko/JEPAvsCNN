@@ -51,7 +51,7 @@ class ViTPredictor(nn.Module):
         x = self.predictor_embed(x)
         
         
-        target_positions = apply_mask(self.pred_pos_embed.repeat(B, 1, 1), adjusted_target_masks)
+        target_positions = apply_mask(self.pred_pos_embed.repeat(B, 1, 1), target_mask)
         
         num_target_tokens = target_positions.size(1)
         mask_tokens = self.mask_token.repeat(target_positions.size(0), num_target_tokens, 1)
