@@ -7,10 +7,10 @@
         "IMAGE_SIZE": 128,
         "PATCH_SIZE": 16,
         "MLP_DIM": 512,
-        "EPOCHS": 1,
+        "EPOCHS": 5,
         "NUM_HEADS": 8,
         "BATCH_SIZE": 16,
-        "LEARNING_RATE": 0.05,
+        "LEARNING_RATE": 0.005,
         "MOMENTUM": 0.996,
         "NUM_TARGET_BLOCKS": 2
     },

@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch
 import copy
 import json
+from src.IJEPA.mask.masking import apply_mask
 
 file = open("././parameters.json")
 parameters: dict[str, int] = json.load(file)["ijepa"]
@@ -18,6 +19,59 @@ PATCH_SIZE = parameters["PATCH_SIZE"]
 MLP_DIM = parameters["MLP_DIM"]
 NUM_HEADS = parameters["NUM_HEADS"]
 EPOCHS = parameters["EPOCHS"]
+
+class ViTPredictor(nn.Module):
+
+    def __init__(self, num_patches, embed_dim=EMBED_DIM, pred_dim=None, depth=DEPTH, num_heads=NUM_HEADS, drop_rate=0.0, init_std=0.02):
+        super().__init__()
+        if pred_dim is None:
+            pred_dim = embed_dim
+        self.predictor_embed = nn.Linear(embed_dim, pred_dim, bias=True)
+        self.mask_token = nn.Parameter(torch.zeros(1, 1, pred_dim)) # learnable parameters to predict masked region
+
+        self.pred_pos_embed = nn.Parameter(torch.zeros(1, num_patches, pred_dim), requires_grad=False)
+
+        self.pred_blocks = nn.Sequential(*[
+            TransformerEncoder(
+                num_heads=num_heads,
+                embed_dim=pred_dim,
+                mlp_dim=MLP_DIM,
+                drop=drop_rate
+            )
+            for _ in range(depth)
+        ])
+        self.init_std = init_std
+        self.predictor_norm = nn.LayerNorm(pred_dim)
+        self.predictor_proj = nn.Linear(pred_dim, embed_dim) # back to encoder dimension
+
+    def forward(self, x, context_mask, target_mask):
+
+        B = x.size(0)
+        
+        x = self.predictor_embed(x)
+        
+        
+        target_positions = apply_mask(self.pred_pos_embed.repeat(B, 1, 1), target_mask)
+        
+        num_target_tokens = target_positions.size(1)
+        mask_tokens = self.mask_token.repeat(target_positions.size(0), num_target_tokens, 1)
+        mask_tokens = mask_tokens + target_positions
+        
+        context_tokens_repeated = x.repeat(target_positions.size(0) // x.size(0), 1, 1)
+        
+        x = torch.cat([context_tokens_repeated, mask_tokens], dim=1)
+        
+        for block in self.pred_blocks:
+            x = block(x)
+        
+        x = self.predictor_norm(x)
+        
+        context_length = context_tokens_repeated.size(1)
+        predicted_tokens = x[:, context_length:]
+        
+        predicted_tokens = self.predictor_proj(predicted_tokens)
+        
+        return predicted_tokens
 
 class MLP(nn.Module):
     
@@ -96,26 +150,17 @@ class VisionTransformer(nn.Module):
         
         # optional -> head to predict classes (nn.Linear(embed_dim, num_classes))
         
-    def forward(self, x):
+    def forward(self, x, masks=None):
         if x.dim() == 4:
-            x = self.patch_embed(x)
-        x = self.encoder(x)
+            x = self.patch_embed(x) # patch embed and pos encoding
+        if masks is not None:
+            x = apply_mask(x, masks) # only needed when entering with student model
+
+        for block in self.encoder:
+            x = block(x)
         x = self.norm(x)
         # cls_token = x[:, 0] -> return only cls token if needed
         return x # return self.head(cls_token) when classification
-
-class PredictionHead(nn.Module):
-    
-    def __init__(self, student_dim, hidden_feature=None, teacher_dim=None, drop=0., act=nn.GELU):
-        super().__init__()
-        self.student_dim = student_dim
-        self.hidden_feature = hidden_feature or student_dim * 2
-        self.teacher_dim = teacher_dim
-        self.mlp = MLP(in_features=student_dim, hidden_features=hidden_feature, out_features=teacher_dim, act_layer=act, drop=drop)
-
-    def forward(self, x):
-        x = self.mlp(x)
-        return x
     
 
 teacher_model = VisionTransformer(
