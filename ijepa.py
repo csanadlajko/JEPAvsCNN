@@ -17,11 +17,33 @@ file = open("parameters.json")
 parameters: dict[str, int] = json.load(file)["ijepa"]
 
 loss = nn.MSELoss()
-optim = torch.optim.Adam(params=student_model.parameters(), lr=parameters["LEARNING_RATE"], weight_decay=1e-4)
 mask = Mask()
 predictor = ViTPredictor(
     teacher_model.patch_embed.num_patches
 )
+
+optim = torch.optim.Adam(
+    params=list(student_model.parameters()) + list(predictor.parameters()), 
+    lr=parameters["LEARNING_RATE"], 
+    weight_decay=1e-4
+)
+
+# for optimal learning rate
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=parameters["EPOCHS"])
+
+# xavier initialization for model weights
+def init_weights(m):
+    if isinstance(m, nn.Linear):
+        torch.nn.init.xavier_uniform_(m.weight)
+        if m.bias is not None:
+            torch.nn.init.zeros_(m.bias)
+    elif isinstance(m, nn.LayerNorm):
+        torch.nn.init.ones_(m.weight)
+        torch.nn.init.zeros_(m.bias)
+
+teacher_model.apply(init_weights)
+student_model.apply(init_weights)
+predictor.apply(init_weights)
 
 teacher_model.to(device)
 student_model.to(device)
@@ -37,7 +59,7 @@ def _ema_update(teacher_mod, student_mod, momentum=parameters["MOMENTUM"]):
     for t_param, s_param in zip(teacher_mod.parameters(), student_mod.parameters()):
         t_param.data.mul_(momentum).add_(s_param.data, alpha=1.0 - momentum)
 
-def train(teacher_mod, student_mod, loader, optimizer):
+def train(teacher_mod, student_mod, loader, optimizer, scheduler):
     teacher_mod.eval()
     student_mod.train()
     predictor.train()
@@ -75,8 +97,6 @@ def train(teacher_mod, student_mod, loader, optimizer):
         _ema_update(teacher_mod, student_mod)
         total_loss += loss_curr.item() * images.size(0)
         num_batches += 1
-        
-        print(f"Batch {batch_idx}, Loss: {loss_curr:.4f}")
         
     print("---TRAINING ENDED---")
     if TRAIN_EMBEDDINGS:
@@ -152,7 +172,8 @@ if __name__ == "__main__":
     
     for epoch in range(parameters['EPOCHS']):
         print(f"\n=== EPOCH {epoch + 1}/{parameters['EPOCHS']} ===")
-        train_embs, train_labels = train(teacher_model, student_model, train_loader, optim)
+        train_embs, train_labels = train(teacher_model, student_model, train_loader, optim, scheduler)
+        scheduler.step()
                 
         TRAIN_EMBEDDINGS.clear()
         TRAIN_LABELS.clear()

@@ -129,7 +129,7 @@ class TransformerEncoder(nn.Module):
     
 class VisionTransformer(nn.Module):
     
-    def __init__(self, img_size, patch_size, in_chans, embed_dim, num_heads, depth, mlp_dim, drop_rate):
+    def __init__(self, img_size, patch_size, in_chans, embed_dim, num_heads, depth, mlp_dim, drop_rate, num_classes=None):
         super().__init__()
         self.patch_embed = PatchEmbed(
             img_size=img_size,
@@ -148,9 +148,13 @@ class VisionTransformer(nn.Module):
         ])
         self.norm = nn.LayerNorm(embed_dim)
         
-        # optional -> head to predict classes (nn.Linear(embed_dim, num_classes))
+        # Classification head
+        if num_classes is not None:
+            self.head = nn.Linear(embed_dim, num_classes)
+        else:
+            self.head = None
         
-    def forward(self, x, masks=None):
+    def forward(self, x, masks=None, return_cls_only=False, return_logits=False):
         if x.dim() == 4:
             x = self.patch_embed(x) # patch embed and pos encoding
         if masks is not None:
@@ -159,8 +163,16 @@ class VisionTransformer(nn.Module):
         for block in self.encoder:
             x = block(x)
         x = self.norm(x)
-        # cls_token = x[:, 0] -> return only cls token if needed
-        return x # return self.head(cls_token) when classification
+        
+        if return_cls_only:
+            cls_token = x[:, 0]
+            if return_logits and self.head is not None:
+                return self.head(cls_token)
+            return cls_token
+        elif return_logits and self.head is not None:
+            cls_token = x[:, 0]
+            return self.head(cls_token)
+        return x
     
 
 teacher_model = VisionTransformer(
@@ -171,7 +183,8 @@ teacher_model = VisionTransformer(
     num_heads=NUM_HEADS,
     depth=DEPTH,
     mlp_dim=MLP_DIM,
-    drop_rate=DROP_RATE
+    drop_rate=DROP_RATE,
+    num_classes=10
 )
 
 student_model = copy.deepcopy(teacher_model)
