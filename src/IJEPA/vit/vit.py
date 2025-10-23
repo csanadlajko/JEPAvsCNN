@@ -101,7 +101,7 @@ class PatchEmbed(nn.Module):
         self.patch_size = patch_size
         self.num_patches = (img_size // patch_size) ** 2
         self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.cls_token = nn.Parameter(torch.randn(1, 1, embed_dim) * 0.02)
         self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + 1, embed_dim))
         
     def forward(self, x):
@@ -120,11 +120,12 @@ class TransformerEncoder(nn.Module):
         self.norm2 = nn.LayerNorm(embed_dim)
         self.att = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads, dropout=drop, batch_first=True)
         self.mlp = MLP(in_features=embed_dim, hidden_features=mlp_dim, out_features=embed_dim, act_layer=nn.GELU, drop=drop)
+        self.dropout = nn.Dropout(drop)
 
     def forward(self, x):
         attn_output, _ = self.att(self.norm1(x), self.norm1(x), self.norm1(x))
-        x = x + attn_output
-        x = x + self.mlp(self.norm2(x))
+        x = x + self.dropout(attn_output)
+        x = x + self.dropout(self.mlp(self.norm2(x)))
         return x
     
 class VisionTransformer(nn.Module):
@@ -150,14 +151,14 @@ class VisionTransformer(nn.Module):
         
         # optional -> head to predict classes (nn.Linear(embed_dim, num_classes))
         
-    def forward(self, x, masks=None):
-        if x.dim() == 4:
-            x = self.patch_embed(x) # patch embed and pos encoding
-        if masks is not None:
+    def forward(self, x, masks=None, return_cls_only=False, return_logits=False):
+        x = self.patch_embed(x) # patch embed and pos encoding
+        if masks is not None and return_cls_only == False:
             x = apply_mask(x, masks) # only needed when entering with student model
 
         for block in self.encoder:
             x = block(x)
+
         x = self.norm(x)
         # cls_token = x[:, 0] -> return only cls token if needed
         return x # return self.head(cls_token) when classification
