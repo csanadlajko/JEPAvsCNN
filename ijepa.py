@@ -7,9 +7,6 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 import json
-import faiss
-
-import transformers.models.ijepa
 
 cls_loss = nn.CrossEntropyLoss()
 
@@ -28,22 +25,20 @@ predictor = ViTPredictor(
 )
 
 optim_cls = torch.optim.Adam(
-    params=student_model.parameters(),
-    lr=parameters["LEARNING_RATE"] * 0.1,
-    weight_decay=1e-4
+    params=[par for name, par in student_model.named_parameters() if "cls_head" in name],
+    lr=0.003,
 )
 
 optim_student = torch.optim.Adam(
     params=student_model.parameters(), 
-    lr=parameters["LEARNING_RATE"], 
-    weight_decay=1e-4
+    lr=parameters["LEARNING_RATE"]
 )
 
 optim_predictor= torch.optim.Adam(
     params=predictor.parameters(), 
-    lr=parameters["LEARNING_RATE"], 
-    weight_decay=1e-4
+    lr=parameters["LEARNING_RATE"]
 )
+
 
 # xavier initialization for model weights
 def init_weights(m):
@@ -62,11 +57,6 @@ predictor.apply(init_weights)
 teacher_model.to(device)
 student_model.to(device)
 predictor.to(device)
-
-TRAIN_EMBEDDINGS = []
-TRAIN_LABELS = []
-
-K_CLOSEST = 4
 
 @torch.no_grad()
 def _ema_update(teacher_mod, student_mod, momentum=parameters["MOMENTUM"]):
@@ -101,35 +91,30 @@ def train(teacher_mod, student_mod, loader, optimizer):
         optim_predictor.zero_grad()
         
         loss_curr = loss(predicted_target_tokens, teacher_target_tokens)
+            
         loss_curr.backward()
-        
-        predicted_embeddings = predicted_target_tokens.mean(dim=1)
-        
-        TRAIN_EMBEDDINGS.append(predicted_embeddings.cpu())
-        TRAIN_LABELS.append(labels.cpu())
         
         optimizer.step()
         optim_predictor.step()
+        
         _ema_update(teacher_mod, student_mod)
+        
         total_loss += loss_curr.item() 
         num_batches += 1
         
-        print(f"loss at batch {batch_idx}: {loss_curr.item():.4f}")
+        if batch_idx % 50 == 0:
+            current_lr = optimizer.param_groups[0]['lr']
+            print(f"loss at batch {batch_idx}: {loss_curr.item():.4f}, lr: {current_lr:.6f}")
+        else:
+            print(f"loss at batch {batch_idx}: {loss_curr.item():.4f}")
 
         if batch_idx == 500:
             break
         
     print("---TRAINING ENDED---")
-    if TRAIN_EMBEDDINGS:
-        train_embs = torch.cat(TRAIN_EMBEDDINGS)
-        train_labels = torch.cat(TRAIN_LABELS)
-    else:
-        train_embs = torch.empty(0)
-        train_labels = torch.empty(0)
     
     avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
     print(f"Average training loss: {avg_loss:.4f}")
-    return train_embs, train_labels
 
 def train_cls(student_model, train_dataset):
     student_model.train()
@@ -137,28 +122,35 @@ def train_cls(student_model, train_dataset):
     print("---STARTING CLS TRAINING---")
     total_loss = 0.0
     num_batches = 0
+    correct_predictions = 0
+    total_predictions = 0
+
+    for name, param in student_model.named_parameters():
+        if "cls_head" not in name:
+            param.requires_grad = False
     
     for batch_idx, (images, labels) in enumerate(train_dataset):
         images = images.to(device)
         labels = labels.to(device)
         
-        pred_classes = student_model(images, return_cls_only=True, return_logits=True)
+        pred_classes = student_model(images, masks=None, return_cls_only=True, return_logits=True)
 
         optim_cls.zero_grad()
-        optim_predictor.zero_grad()
 
         loss = cls_loss(pred_classes, labels)
-
         loss.backward()
-        
         optim_cls.step()
-        optim_predictor.step()
+
+        _, predicted = torch.max(pred_classes, 1)
+        correct_predictions += (predicted == labels).sum().item()
+        total_predictions += labels.size(0)
 
         total_loss += loss.item()
         num_batches += 1
 
         if batch_idx % 50 == 0:
-            print(f"CLS Loss at batch {batch_idx}: {loss.item():.4f}")
+            current_acc = correct_predictions / total_predictions
+            print(f"CLS Loss at batch {batch_idx}: {loss.item():.4f}, Accuracy: {current_acc:.4f}")
 
         if batch_idx == 500:
             break
@@ -200,84 +192,16 @@ def eval_cls(model, test_dataset):
     print(f"Final CLS accuracy: {final_accuracy:.4f}")
     return final_accuracy
 
-
-
-def eval_ijepa(model, test_dataset, train_embs, train_labels):
-    """
-    Core logic:
-        1. Encode the given test image with the frozen student model.
-        2. Given the result embedding, search the k most relevant results.
-        3. Calculate the accuracy by comparing the result embedding's label to the current label.
-        4. Get the final results by stacking the correct / total guesses.
-    """
-
-    model.eval()
-    total_acc = 0
-    n_test = 0
-
-    print("---STARTING MODEL EVALUATION---")
-
-    with torch.no_grad():
-        train_np = train_embs.detach().cpu().numpy().astype('float32')
-        faiss.normalize_L2(train_np)
-        index = faiss.IndexFlatIP(train_np.shape[1])
-        index.add(train_np)
-
-    with torch.no_grad():
-        for batch_idx, (images, labels) in enumerate(test_dataset):
-            images = images.to(device)
-            labels = labels.to(device)
-            
-            for i in range(images.shape[0]):
-                image = images[i:i+1] 
-                label = labels[i:i+1]
-                                
-                ctx_masks, target_masks = mask(image)
-                
-                ctx_embedding = model(image, ctx_masks)
-                
-                predicted_target_embedding = predictor(ctx_embedding, ctx_masks, target_masks)
-                predicted_target_embedding = predicted_target_embedding.mean(dim=1)
-                
-                query_emb = predicted_target_embedding.detach().cpu().numpy().astype('float32')
-                faiss.normalize_L2(query_emb)
-                
-                distances, indices = index.search(query_emb, K_CLOSEST)
-                neighbor_labels = train_labels[indices[0]] 
-                
-                matches = (neighbor_labels == label.cpu()).sum().item()
-                acc = matches / K_CLOSEST
-                
-                total_acc += acc
-                n_test += 1
-                
-                print(f"Current accuracy: {acc:.4f}")
-
-            if batch_idx == 300:
-                break
-    print("---EVALUATING ENDED---")
-    final_acc = total_acc / n_test
-    print(f"Final accuracy: {final_acc:.4f}")
-    return final_acc
-        
-
 if __name__ == "__main__":
     print(f"Training for {parameters['EPOCHS']} epochs...")
     
     for epoch in range(parameters['EPOCHS']):
         print(f"\n=== EPOCH {epoch + 1}/{parameters['EPOCHS']} ===")
-        train_embs, train_labels = train(teacher_model, student_model, train_loader, optim_student)
+        train(teacher_model, student_model, train_loader, optim_student)
         
-        TRAIN_EMBEDDINGS.clear()
-        TRAIN_LABELS.clear()
-    
     train_cls(student_model, train_loader)
     
     print("\n=== FINAL EVALUATION ===")
     
     cls_acc = eval_cls(student_model, test_loader)
     print(f"-- CLS token classification accuracy: {cls_acc:.4f}")
-    
-    # Evaluate I-JEPA retrieval
-    # ijepa_acc = eval_ijepa(student_model, test_loader, train_embs, train_labels)
-    # print(f"-- I-JEPA retrieval accuracy: {ijepa_acc:.4f}")

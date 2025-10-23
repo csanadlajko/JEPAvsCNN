@@ -19,6 +19,7 @@ PATCH_SIZE = parameters["PATCH_SIZE"]
 MLP_DIM = parameters["MLP_DIM"]
 NUM_HEADS = parameters["NUM_HEADS"]
 EPOCHS = parameters["EPOCHS"]
+NUM_CLASSES = parameters["NUM_CLASSES"]
 
 class ViTPredictor(nn.Module):
 
@@ -145,23 +146,30 @@ class VisionTransformer(nn.Module):
                 mlp_dim=mlp_dim,
                 drop=drop_rate
             )
-            for _ in range(DEPTH)
+            for _ in range(depth)
         ])
         self.norm = nn.LayerNorm(embed_dim)
         
-        # optional -> head to predict classes (nn.Linear(embed_dim, num_classes))
+        self.cls_head = nn.Linear(embed_dim, 10)
         
     def forward(self, x, masks=None, return_cls_only=False, return_logits=False):
         x = self.patch_embed(x) # patch embed and pos encoding
-        if masks is not None and return_cls_only == False:
+        
+        if masks is not None and not return_cls_only:
             x = apply_mask(x, masks) # only needed when entering with student model
 
         for block in self.encoder:
             x = block(x)
 
         x = self.norm(x)
-        # cls_token = x[:, 0] -> return only cls token if needed
-        return x # return self.head(cls_token) when classification
+        
+        if return_cls_only:
+            cls_token = x[:, 0]
+            if return_logits:
+                return self.cls_head(cls_token)
+            return cls_token
+        
+        return x
     
 
 teacher_model = VisionTransformer(

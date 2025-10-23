@@ -10,9 +10,10 @@
         "EPOCHS": 1,
         "NUM_HEADS": 8,
         "BATCH_SIZE": 16,
-        "LEARNING_RATE": 0.005,
+        "LEARNING_RATE": 0.0005,
         "MOMENTUM": 0.996,
-        "NUM_TARGET_BLOCKS": 2
+        "NUM_TARGET_BLOCKS": 2,
+        "NUM_CLASSES": 10
     },
     "llmjepa": {
         "LEARNING_RATE": 0.01,
