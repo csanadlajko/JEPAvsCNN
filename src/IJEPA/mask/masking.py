@@ -147,6 +147,8 @@ class Mask(object):
             all_mask_ctx.append(cmask) # +1 if cls token needed
             
         if id_only:
+            # all_mask_ctx = [idx + 1 for idx in all_mask_ctx]
+            # all_mask_target = [[t + 1 for t in target_list] for target_list in all_mask_target]
             return all_mask_ctx, all_mask_target
         
         masked_ctx_batch = batch.clone()

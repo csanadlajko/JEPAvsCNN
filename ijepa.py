@@ -18,25 +18,31 @@ file = open("parameters.json")
 parameters: dict[str, int] = json.load(file)["ijepa"]
 
 loss = nn.MSELoss()
-optim = torch.optim.Adam(params=student_model.parameters(), lr=parameters["LEARNING_RATE"], weight_decay=1e-4)
 mask = Mask()
 predictor = ViTPredictor(
     teacher_model.patch_embed.num_patches
 )
 
-optim_cls = torch.optim.Adam(
-    params=[par for name, par in student_model.named_parameters() if "cls_head" in name],
-    lr=0.003,
+optim_cls = torch.optim.AdamW(
+    params=student_model.parameters(),
+    lr=0.001,
+    weight_decay=1e-4
 )
 
-optim_student = torch.optim.Adam(
+lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim_cls, 
+                                                    T_max=1, 
+                                                    eta_min=0)
+
+optim_student = torch.optim.AdamW(
     params=student_model.parameters(), 
-    lr=parameters["LEARNING_RATE"]
+    lr=parameters["LEARNING_RATE"],
+    weight_decay=1e-4
 )
 
-optim_predictor= torch.optim.Adam(
+optim_predictor= torch.optim.AdamW(
     params=predictor.parameters(), 
-    lr=parameters["LEARNING_RATE"]
+    lr=parameters["LEARNING_RATE"],
+    weight_decay=1e-4
 )
 
 
@@ -108,7 +114,7 @@ def train(teacher_mod, student_mod, loader, optimizer):
         else:
             print(f"loss at batch {batch_idx}: {loss_curr.item():.4f}")
 
-        if batch_idx == 500:
+        if batch_idx == 2000:
             break
         
     print("---TRAINING ENDED---")
@@ -126,8 +132,10 @@ def train_cls(student_model, train_dataset):
     total_predictions = 0
 
     for name, param in student_model.named_parameters():
-        if "cls_head" not in name:
+        if "cls_fc" not in name:
             param.requires_grad = False
+        else:
+            param.requires_grad = True
     
     for batch_idx, (images, labels) in enumerate(train_dataset):
         images = images.to(device)
@@ -152,7 +160,7 @@ def train_cls(student_model, train_dataset):
             current_acc = correct_predictions / total_predictions
             print(f"CLS Loss at batch {batch_idx}: {loss.item():.4f}, Accuracy: {current_acc:.4f}")
 
-        if batch_idx == 500:
+        if batch_idx == 2000:
             break
     
     avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
@@ -174,7 +182,7 @@ def eval_cls(model, test_dataset):
             images = images.to(device)
             labels = labels.to(device)
             
-            pred_classes = model(images, return_cls_only=True, return_logits=True)
+            pred_classes = model(images, masks=None, return_cls_only=True, return_logits=True)
             _, predicted = torch.max(pred_classes, 1)
             
             total_correct += (predicted == labels).sum().item()
@@ -198,8 +206,9 @@ if __name__ == "__main__":
     for epoch in range(parameters['EPOCHS']):
         print(f"\n=== EPOCH {epoch + 1}/{parameters['EPOCHS']} ===")
         train(teacher_model, student_model, train_loader, optim_student)
-        
-    train_cls(student_model, train_loader)
+    
+    for epoch in range(parameters['EPOCHS']):
+        train_cls(student_model, train_loader)
     
     print("\n=== FINAL EVALUATION ===")
     
