@@ -7,12 +7,21 @@ parameters: dict[str, int] = json.load(file)["ijepa"]
 
 transform = transforms.Compose([
     transforms.Resize((parameters["IMAGE_SIZE"], parameters["IMAGE_SIZE"])),
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.RandomRotation(degrees=15),
+    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+])
+
+test_transform = transforms.Compose([
+    transforms.Resize((parameters["IMAGE_SIZE"], parameters["IMAGE_SIZE"])),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
 ])
 
 train_data = datasets.CIFAR10("data", train=True, transform=transform, download=True)
-test_data = datasets.CIFAR10("data", transform=transform, train=False, download=True)
+test_data = datasets.CIFAR10("data", transform=test_transform, train=False, download=True)
 
 ## batchify data
 

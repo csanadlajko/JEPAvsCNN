@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch
 import copy
 import json
+import torch.nn.functional as F
 from src.IJEPA.mask.masking import apply_mask
 
 file = open("././parameters.json")
@@ -19,6 +20,7 @@ PATCH_SIZE = parameters["PATCH_SIZE"]
 MLP_DIM = parameters["MLP_DIM"]
 NUM_HEADS = parameters["NUM_HEADS"]
 EPOCHS = parameters["EPOCHS"]
+NUM_CLASSES = parameters["NUM_CLASSES"]
 
 class ViTPredictor(nn.Module):
 
@@ -29,7 +31,7 @@ class ViTPredictor(nn.Module):
         self.predictor_embed = nn.Linear(embed_dim, pred_dim, bias=True)
         self.mask_token = nn.Parameter(torch.zeros(1, 1, pred_dim)) # learnable parameters to predict masked region
 
-        self.pred_pos_embed = nn.Parameter(torch.zeros(1, num_patches, pred_dim), requires_grad=False)
+        self.pred_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, pred_dim), requires_grad=False)
 
         self.pred_blocks = nn.Sequential(*[
             TransformerEncoder(
@@ -101,7 +103,7 @@ class PatchEmbed(nn.Module):
         self.patch_size = patch_size
         self.num_patches = (img_size // patch_size) ** 2
         self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.cls_token = nn.Parameter(torch.randn(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches + 1, embed_dim))
         
     def forward(self, x):
@@ -120,11 +122,12 @@ class TransformerEncoder(nn.Module):
         self.norm2 = nn.LayerNorm(embed_dim)
         self.att = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads, dropout=drop, batch_first=True)
         self.mlp = MLP(in_features=embed_dim, hidden_features=mlp_dim, out_features=embed_dim, act_layer=nn.GELU, drop=drop)
+        self.dropout = nn.Dropout(drop)
 
     def forward(self, x):
         attn_output, _ = self.att(self.norm1(x), self.norm1(x), self.norm1(x))
-        x = x + attn_output
-        x = x + self.mlp(self.norm2(x))
+        x = x + self.dropout(attn_output)
+        x = x + self.dropout(self.mlp(self.norm2(x)))
         return x
     
 class VisionTransformer(nn.Module):
@@ -144,34 +147,42 @@ class VisionTransformer(nn.Module):
                 mlp_dim=mlp_dim,
                 drop=drop_rate
             )
-            for _ in range(DEPTH)
+            for _ in range(depth)
         ])
         self.norm = nn.LayerNorm(embed_dim)
+
+        self.cls_fc1 = nn.Linear(embed_dim, embed_dim // 2)
+        self.cls_fc2 = nn.Linear(embed_dim //2, NUM_CLASSES)
+
+        nn.init.xavier_uniform_(self.cls_fc1.weight)
+        nn.init.zeros_(self.cls_fc1.bias)
+        nn.init.xavier_uniform_(self.cls_fc2.weight)
+        nn.init.zeros_(self.cls_fc2.bias)
         
-        # Classification head
-        if num_classes is not None:
-            self.head = nn.Linear(embed_dim, num_classes)
-        else:
-            self.head = None
+        self.cls_head = nn.Sequential(
+            self.cls_fc1,
+            nn.GELU(),
+            nn.Dropout(drop_rate),
+            self.cls_fc2
+        )
         
     def forward(self, x, masks=None, return_cls_only=False, return_logits=False):
-        if x.dim() == 4:
-            x = self.patch_embed(x) # patch embed and pos encoding
-        if masks is not None:
+        x = self.patch_embed(x) # patch embed and pos encoding
+        
+        if masks is not None and not return_cls_only:
             x = apply_mask(x, masks) # only needed when entering with student model
 
         for block in self.encoder:
             x = block(x)
+
         x = self.norm(x)
         
         if return_cls_only:
-            cls_token = x[:, 0]
-            if return_logits and self.head is not None:
-                return self.head(cls_token)
+            cls_token = x[:, 0, :]
+            if return_logits:
+                return self.cls_head(cls_token)
             return cls_token
-        elif return_logits and self.head is not None:
-            cls_token = x[:, 0]
-            return self.head(cls_token)
+        
         return x
     
 
