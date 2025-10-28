@@ -39,6 +39,8 @@ optim_student = torch.optim.AdamW(
     weight_decay=1e-4
 )
 
+student_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim_student, 10, 0)
+
 optim_predictor= torch.optim.AdamW(
     params=predictor.parameters(), 
     lr=parameters["LEARNING_RATE"],
@@ -69,7 +71,7 @@ def _ema_update(teacher_mod, student_mod, momentum=parameters["MOMENTUM"]):
     for t_param, s_param in zip(teacher_mod.parameters(), student_mod.parameters()):
         t_param.data.mul_(momentum).add_(s_param.data, alpha=1.0 - momentum)
 
-def train(teacher_mod, student_mod, loader, optimizer, scheduler):
+def train(teacher_mod, student_mod, loader, optimizer):
     teacher_mod.eval()
     student_mod.train()
     predictor.train()
@@ -108,14 +110,10 @@ def train(teacher_mod, student_mod, loader, optimizer, scheduler):
         total_loss += loss_curr.item() 
         num_batches += 1
         
-        if batch_idx % 50 == 0:
-            current_lr = optimizer.param_groups[0]['lr']
+        if batch_idx % 100 == 0:
+            current_lr = optimizer.param_groups[0]['lr'] ## lr should update when entering another epoch (scheduler)
             print(f"loss at batch {batch_idx}: {loss_curr.item():.4f}, lr: {current_lr:.6f}")
-        else:
-            print(f"loss at batch {batch_idx}: {loss_curr.item():.4f}")
 
-        if batch_idx == 2000:
-            break
         
     print("---TRAINING ENDED---")
     
@@ -156,12 +154,10 @@ def train_cls(student_model, train_dataset):
         total_loss += loss.item()
         num_batches += 1
 
-        if batch_idx % 50 == 0:
+        if batch_idx % 100 == 0:
             current_acc = correct_predictions / total_predictions
             print(f"CLS Loss at batch {batch_idx}: {loss.item():.4f}, Accuracy: {current_acc:.4f}")
 
-        if batch_idx == 2000:
-            break
     
     avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
     print(f"Average CLS training loss: {avg_loss:.4f}")
@@ -192,8 +188,6 @@ def eval_cls(model, test_dataset):
                 current_acc = total_correct / total_samples
                 print(f"Batch {batch_idx}, Current accuracy: {current_acc:.4f}")
             
-            if batch_idx == 300:
-                break
     
     final_accuracy = total_correct / total_samples
     print(f"---CLS EVALUATION ENDED---")
@@ -206,6 +200,7 @@ if __name__ == "__main__":
     for epoch in range(parameters['EPOCHS']):
         print(f"\n=== EPOCH {epoch + 1}/{parameters['EPOCHS']} ===")
         train(teacher_model, student_model, train_loader, optim_student)
+        student_scheduler.step()
     
     for epoch in range(parameters['EPOCHS']):
         train_cls(student_model, train_loader)
