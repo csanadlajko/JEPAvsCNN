@@ -67,7 +67,7 @@ class ViTPredictor(nn.Module):
         self.predictor_norm = nn.LayerNorm(pred_dim)
         self.predictor_proj = nn.Linear(pred_dim, embed_dim) # back to encoder dimension
 
-    def forward(self, x, context_mask, target_mask, labels: torch.Tensor):
+    def forward(self, x, context_mask, target_mask, labels: torch.Tensor, multimodal: bool):
 
         B = x.size(0)
         
@@ -93,25 +93,27 @@ class ViTPredictor(nn.Module):
         
         predicted_tokens = self.predictor_proj(predicted_tokens)
 
-        label_list = [f"a photo of class: {label}" for label in labels]
+        # only enter if model is ran in multimodal mode
+        if multimodal: 
+            
+            label_list = [f"a photo of class: {label}" for label in labels]
 
-        label_tokens = tokenizer(label_list, return_tensors='pt', padding=True)
-        
-        enc_labels = text_encoder(**label_tokens, output_hidden_states=True)
+            label_tokens = tokenizer(label_list, return_tensors='pt', padding=True)
+            
+            enc_labels = text_encoder(**label_tokens, output_hidden_states=True)
 
-        enc_labels = enc_labels.hidden_states[-1]
+            enc_labels = enc_labels.hidden_states[-1]
 
-        num_masks = predicted_tokens.size(0) // B
+            num_masks = predicted_tokens.size(0) // B
 
-        enc_labels = enc_labels.unsqueeze(1).expand(-1, num_masks, -1, -1)
-        enc_labels = enc_labels.reshape(-1, enc_labels.size(2), enc_labels.size(3))
+            enc_labels = enc_labels.unsqueeze(1).expand(-1, num_masks, -1, -1)
+            enc_labels = enc_labels.reshape(-1, enc_labels.size(2), enc_labels.size(3))
 
-        enc_labels = self.label_to_embed(enc_labels)
+            enc_labels = self.label_to_embed(enc_labels)
 
-        pred_attended, _ = self.post_pred_mhsa(predicted_tokens, enc_labels, enc_labels)
+            pred_attended, _ = self.post_pred_mhsa(predicted_tokens, enc_labels, enc_labels)
 
-        predicted_tokens = predicted_tokens + pred_attended
-
+            predicted_tokens = predicted_tokens + pred_attended
         
         return predicted_tokens
 
