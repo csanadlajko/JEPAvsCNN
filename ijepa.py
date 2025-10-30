@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 import json
+from typing import Any
 
 cls_loss = nn.CrossEntropyLoss()
 
@@ -15,7 +16,16 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
 file = open("parameters.json")
-parameters: dict[str, int] = json.load(file)["ijepa"]
+params_all: dict[str, Any] = json.load(file)
+
+parameters = params_all["ijepa"]
+
+MULTIMODAL_RUN = params_all["multimodal"]["MULTIMODAL_RUN"]
+
+if MULTIMODAL_RUN:
+    print("Starting training in multimodal mode!")
+else:
+    print("Starting basic I-JEPA training!")
 
 loss = nn.MSELoss()
 mask = Mask()
@@ -93,7 +103,7 @@ def train(teacher_mod, student_mod, loader, optimizer):
         
         student_tokens = student_mod(images, context_masks)
 
-        predicted_target_tokens = predictor(student_tokens, context_masks, target_masks)
+        predicted_target_tokens = predictor(student_tokens, context_masks, target_masks, labels, MULTIMODAL_RUN)
         
         optimizer.zero_grad()
         optim_predictor.zero_grad()

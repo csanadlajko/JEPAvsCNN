@@ -2,11 +2,22 @@ import torch.nn as nn
 import torch
 import copy
 import json
-import torch.nn.functional as F
+from typing import Any
 from src.IJEPA.mask.masking import apply_mask
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 file = open("././parameters.json")
-parameters: dict[str, int] = json.load(file)["ijepa"]
+
+param_file = json.load(file)
+
+parameters: dict[str, Any] = param_file["ijepa"]
+parameters_llm: dict[str, Any] = param_file["llmjepa"]
+
+text_encoder = AutoModelForCausalLM.from_pretrained(parameters_llm["MODEL_NAME"])
+tokenizer = AutoTokenizer.from_pretrained(parameters_llm["MODEL_NAME"])
+
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
 
 ## hyperparameters
 
@@ -24,7 +35,7 @@ NUM_CLASSES = parameters["NUM_CLASSES"]
 
 class ViTPredictor(nn.Module):
 
-    def __init__(self, num_patches, embed_dim=EMBED_DIM, pred_dim=None, depth=DEPTH, num_heads=NUM_HEADS, drop_rate=0.0, init_std=0.02):
+    def __init__(self, num_patches, embed_dim=EMBED_DIM, pred_dim=None, depth=DEPTH, num_heads=NUM_HEADS, drop_rate=0.1, init_std=0.02):
         super().__init__()
         if pred_dim is None:
             pred_dim = embed_dim
@@ -42,19 +53,28 @@ class ViTPredictor(nn.Module):
             )
             for _ in range(depth)
         ])
+
+        self.label_to_embed = nn.Sequential(
+            nn.Linear(768, pred_dim), ## 768 -> embed size of gpt2 model
+            nn.LayerNorm(pred_dim),
+            nn.GELU(),
+            nn.Linear(pred_dim, pred_dim)
+        )
+
+        self.post_pred_mhsa = nn.MultiheadAttention(pred_dim, num_heads, drop_rate, batch_first=True)
+
         self.init_std = init_std
         self.predictor_norm = nn.LayerNorm(pred_dim)
         self.predictor_proj = nn.Linear(pred_dim, embed_dim) # back to encoder dimension
 
-    def forward(self, x, context_mask, target_mask):
+    def forward(self, x, context_mask, target_mask, labels: torch.Tensor, multimodal: bool):
 
         B = x.size(0)
         
         x = self.predictor_embed(x)
         
-        
         target_positions = apply_mask(self.pred_pos_embed.repeat(B, 1, 1), target_mask)
-        
+
         num_target_tokens = target_positions.size(1)
         mask_tokens = self.mask_token.repeat(target_positions.size(0), num_target_tokens, 1)
         mask_tokens = mask_tokens + target_positions
@@ -72,12 +92,34 @@ class ViTPredictor(nn.Module):
         predicted_tokens = x[:, context_length:]
         
         predicted_tokens = self.predictor_proj(predicted_tokens)
+
+        # only enter if model is ran in multimodal mode
+        if multimodal: 
+            
+            label_list = [f"a photo of class: {label}" for label in labels]
+
+            label_tokens = tokenizer(label_list, return_tensors='pt', padding=True)
+            
+            enc_labels = text_encoder(**label_tokens, output_hidden_states=True)
+
+            enc_labels = enc_labels.hidden_states[-1]
+
+            num_masks = predicted_tokens.size(0) // B
+
+            enc_labels = enc_labels.unsqueeze(1).expand(-1, num_masks, -1, -1)
+            enc_labels = enc_labels.reshape(-1, enc_labels.size(2), enc_labels.size(3))
+
+            enc_labels = self.label_to_embed(enc_labels)
+
+            pred_attended, _ = self.post_pred_mhsa(predicted_tokens, enc_labels, enc_labels)
+
+            predicted_tokens = predicted_tokens + pred_attended
         
         return predicted_tokens
 
 class MLP(nn.Module):
     
-    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
+    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.1):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
@@ -116,7 +158,7 @@ class PatchEmbed(nn.Module):
     
 class TransformerEncoder(nn.Module):
     
-    def __init__(self, num_heads, embed_dim, mlp_dim, drop=0.):
+    def __init__(self, num_heads, embed_dim, mlp_dim, drop=0.1):
         super().__init__()
         self.norm1 = nn.LayerNorm(embed_dim)
         self.norm2 = nn.LayerNorm(embed_dim)

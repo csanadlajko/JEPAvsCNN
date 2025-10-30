@@ -24,5 +24,8 @@
         "JEPA_LAMBDA": 0.1,
         "EPOCHS": 3,
         "BATCH_SIZE": 1
+    },
+    "multimodal": {
+        "MULTIMODAL_RUN": true
     }
 }

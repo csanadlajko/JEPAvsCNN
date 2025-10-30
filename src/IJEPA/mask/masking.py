@@ -171,10 +171,10 @@ def apply_mask(x, mask_indices):
         for i, mask_idx in enumerate(mask_indices):
             if isinstance(mask_idx, list):
                 # enter when selecting target blocks
-                for single_mask in mask_idx:
-                    if single_mask.numel() > 0:
-                        masked_tokens = x[i:i+1].index_select(1, single_mask)
-                        all_masked_tokens.append(masked_tokens)
+                all_idx = torch.cat(mask_idx)
+                if all_idx.numel() > 0:
+                    masked_tokens = x[i:i+1].index_select(1, all_idx)
+                    all_masked_tokens.append(masked_tokens)
             else:
                 # enter when selecting context blocks
                 if mask_idx.numel() > 0:
