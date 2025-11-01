@@ -55,7 +55,7 @@ class ViTPredictor(nn.Module):
         ])
 
         self.label_to_embed = nn.Sequential(
-            nn.Linear(768, pred_dim), ## 768 -> embed size of gpt2 model
+            nn.Linear(384, pred_dim), ## depends on the embedding size of the text encoder
             nn.LayerNorm(pred_dim),
             nn.GELU(),
             nn.Linear(pred_dim, pred_dim)

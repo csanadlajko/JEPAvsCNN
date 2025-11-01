@@ -4,7 +4,12 @@ import torch
 import json
 
 file = open("././parameters.json")
-parameters: dict[str, int] = json.load(file)["ijepa"]
+total_params: dict[str, int] = json.load(file)
+
+parameters = total_params["ijepa"]
+mm_parameters = total_params["multimodal"]
+
+DEBUG = mm_parameters["DEBUG"]
 
 class Mask(object):
     
@@ -14,11 +19,11 @@ class Mask(object):
         patch_size=parameters["PATCH_SIZE"],
         nctx=1,
         ntarg=parameters["NUM_TARGET_BLOCKS"],
-        targ_mask_scale=(0.15, 0.15),
-        ctx_mask_scale=(0.85, 0.85),
+        targ_mask_scale=(0.05, 0.1),
+        ctx_mask_scale=(0.2, 0.8),
         aspect_ratio=(0.75, 1.5),
         min_keep=4,
-        max_tries=50
+        max_tries=200
     ):
         if isinstance(input_size, int):
             input_size = (input_size, input_size)
@@ -74,18 +79,21 @@ class Mask(object):
     def _place_block_without_overlap(self, h, w, occ):
         H, W = occ.shape
         tries = 0
-        while tries < self.max_tries:
+        found_target = 0
+        total_target = h*w
+        while found_target <= total_target or tries > self.max_tries:
             top = torch.randint(0, H - h + 1, (1,)).item()
             left = torch.randint(0, W- w + 1, (1,)).item()
             cut_region = occ[top:top+h, left:left+w]
-            
+
             if torch.count_nonzero(cut_region) == 0:
                 mask = torch.zeros((H, W), dtype=torch.int32)
                 mask[top:top+h, left:left+w] = 1
                 occ[top:top+h, left:left+w] = 1
                 idx = torch.nonzero(mask.flatten(), as_tuple=False).squeeze()
-                
-                if idx.numel() >= self.min_keep:
+                found_target = idx.numel()
+
+                if idx.numel() == total_target:
                     return idx, occ
             
             tries += 1
@@ -112,8 +120,10 @@ class Mask(object):
             occ = torch.zeros((self.height, self.width), dtype=torch.int32)
             
             target_mask = []
+            print(f"NUM TARGET SHOULD BE: {target_h*target_w} - LISTED BELOW")
             for _ in range(self.ntarg):
                 idx, occ = self._place_block_without_overlap(target_h, target_w, occ)
+                print(f"idx shape: {idx.shape}")
                 target_mask.append(idx) # +1 if cls token needed
             
             free = (occ == 0).to(torch.int32)
@@ -132,16 +142,37 @@ class Mask(object):
                     break
                 tries += 1
             
+            free_idx = torch.nonzero(free.flatten(), as_tuple=False).view(-1)
+            target_size = ctx_h * ctx_w
+            
             if cmask is None:
-                ## using fallback
-                free_idx = torch.nonzero(free.flatten(), as_tuple=False).view(-1)
-                n_free = free_idx.numel()
-                if n_free == 0:
-                    cmask = torch.randperm(self.height * self.width)[:max(self.min_keep, ctx_h * ctx_w // 2)]
+                if free_idx.numel() == 0:
+                    cmask = torch.randperm(self.height * self.width)[:target_size]
                 else:
-                    perm = torch.randperm(n_free)
-                    take = max(self.min_keep, min(ctx_h *ctx_w, n_free))
+                    perm = torch.randperm(free_idx.numel())
+                    take = min(target_size, free_idx.numel())
                     cmask = free_idx[perm[:take]]
+                    
+            current_size = cmask.numel() if cmask is not None and cmask.dim() > 0 else 0
+            needed = target_size - current_size
+            
+            while needed > 0 and free_idx.numel() > 0:
+                if cmask is not None and cmask.numel() > 0:
+                    free_idx = free_idx[~torch.isin(free_idx, cmask)]
+                
+                if free_idx.numel() == 0:
+                    break
+                
+                perm = torch.randperm(free_idx.numel())
+                take = min(needed, free_idx.numel())
+                additional = free_idx[perm[:take]]
+                
+                if cmask is None:
+                    cmask = additional
+                else:
+                    cmask = torch.cat([cmask, additional])
+                
+                needed -= take
                     
             all_mask_target.append(target_mask)
             all_mask_ctx.append(cmask) # +1 if cls token needed
@@ -171,7 +202,7 @@ def apply_mask(x, mask_indices):
         for i, mask_idx in enumerate(mask_indices):
             if isinstance(mask_idx, list):
                 # enter when selecting target blocks
-                all_idx = torch.cat(mask_idx)
+                all_idx = torch.cat(mask_idx)   
                 if all_idx.numel() > 0:
                     masked_tokens = x[i:i+1].index_select(1, all_idx)
                     all_masked_tokens.append(masked_tokens)
@@ -180,7 +211,6 @@ def apply_mask(x, mask_indices):
                 if mask_idx.numel() > 0:
                     masked_tokens = x[i:i+1].index_select(1, mask_idx)
                     all_masked_tokens.append(masked_tokens)
-        
         return torch.cat(all_masked_tokens, dim=0)
     else:
         return x.index_select(1, mask_indices)

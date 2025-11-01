@@ -10,22 +10,23 @@
         "EPOCHS": 10,
         "NUM_HEADS": 8,
         "BATCH_SIZE": 16,
-        "LEARNING_RATE": 0.00005,
+        "LEARNING_RATE": 0.0003,
         "MOMENTUM": 0.996,
-        "NUM_TARGET_BLOCKS": 2,
+        "NUM_TARGET_BLOCKS": 4,
         "NUM_CLASSES": 10
     },
     "llmjepa": {
         "LEARNING_RATE": 0.01,
         "MOMENTUM": 0.996,
         "PRED_TOKENS": 1,
-        "MODEL_NAME": "gpt2",
+        "MODEL_NAME": "sentence-transformers/all-MiniLM-L6-v2",
         "LM_GAMMA": 0.9,
         "JEPA_LAMBDA": 0.1,
         "EPOCHS": 3,
         "BATCH_SIZE": 1
     },
     "multimodal": {
-        "MULTIMODAL_RUN": true
+        "MULTIMODAL_RUN": false,
+        "DEBUG": true
     }
 }
