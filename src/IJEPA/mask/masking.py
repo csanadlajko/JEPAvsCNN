@@ -120,10 +120,8 @@ class Mask(object):
             occ = torch.zeros((self.height, self.width), dtype=torch.int32)
             
             target_mask = []
-            print(f"NUM TARGET SHOULD BE: {target_h*target_w} - LISTED BELOW")
             for _ in range(self.ntarg):
                 idx, occ = self._place_block_without_overlap(target_h, target_w, occ)
-                print(f"idx shape: {idx.shape}")
                 target_mask.append(idx) # +1 if cls token needed
             
             free = (occ == 0).to(torch.int32)
