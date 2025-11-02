@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 import json
 from typing import Any
+import matplotlib.pyplot as plt
 
 cls_loss = nn.CrossEntropyLoss()
 
@@ -33,28 +34,21 @@ predictor = ViTPredictor(
     teacher_model.patch_embed.num_patches
 )
 
-optim_cls = torch.optim.AdamW(
+optim_cls = torch.optim.Adam(
     params=student_model.parameters(),
     lr=0.001,
-    weight_decay=1e-4
 )
 
-lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim_cls, 
-                                                    T_max=1, 
-                                                    eta_min=0)
-
-optim_student = torch.optim.AdamW(
+optim_student = torch.optim.Adam(
     params=student_model.parameters(), 
     lr=parameters["LEARNING_RATE"],
-    weight_decay=1e-4
 )
 
 student_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim_student, 10, 0)
 
-optim_predictor= torch.optim.AdamW(
+optim_predictor= torch.optim.Adam(
     params=predictor.parameters(), 
     lr=parameters["LEARNING_RATE"],
-    weight_decay=1e-4
 )
 
 
@@ -130,6 +124,8 @@ def train(teacher_mod, student_mod, loader, optimizer):
     avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
     print(f"Average training loss: {avg_loss:.4f}")
 
+    return avg_loss
+
 def train_cls(student_model, train_dataset):
     student_model.train()
     
@@ -168,10 +164,12 @@ def train_cls(student_model, train_dataset):
             current_acc = correct_predictions / total_predictions
             print(f"CLS Loss at batch {batch_idx}: {loss.item():.4f}, Accuracy: {current_acc:.4f}")
 
-    
+    current_acc = correct_predictions / total_predictions
     avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
     print(f"Average CLS training loss: {avg_loss:.4f}")
     print("---CLS TRAINING ENDED---")
+
+    return avg_loss, current_acc * 100
 
 def eval_cls(model, test_dataset):
     """
@@ -204,18 +202,52 @@ def eval_cls(model, test_dataset):
     print(f"Final CLS accuracy: {final_accuracy:.4f}")
     return final_accuracy
 
+def show_loss_per_epoch(jepa_loss_epoch_list: list[int], cls_loss_per_epoch: list[int]):
+    epoch_list = range(1, len(jepa_loss_epoch_list) - 1)
+    plt.figure(figsize=(8,5))
+    plt.plot(epoch_list, jepa_loss_epoch_list, label="MSE loss per JEPA epoch")
+    plt.plot(epoch_list, cls_loss_per_epoch, label="CE loss per CLS epochs")
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss (MSE)')
+    plt.title('Loss over epochs')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+def show_cls_data_per_epoch(accuracy_per_epoch: list[int]):
+    epoch_list = range(1, len(accuracy_per_epoch) - 1)
+    plt.figure(figsize=(8,5))
+    plt.plot(epoch_list, accuracy_per_epoch, label="Accuracy per epoch")
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy per epoch (%)')
+    plt.title("CLS accuracy per epoch (%)")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+
 if __name__ == "__main__":
+    jepa_loss_per_epoch = []
+    accuracy_per_epoch = []
+    cls_loss_per_epoch = []
+
     print(f"Training for {parameters['EPOCHS']} epochs...")
     
     for epoch in range(parameters['EPOCHS']):
         print(f"\n=== EPOCH {epoch + 1}/{parameters['EPOCHS']} ===")
-        train(teacher_model, student_model, train_loader, optim_student)
+        loss_epoch = train(teacher_model, student_model, train_loader, optim_student)
         student_scheduler.step()
+        jepa_loss_per_epoch.append(loss_epoch)
     
     for epoch in range(parameters['EPOCHS']):
-        train_cls(student_model, train_loader)
+        cls_loss, accuracy_epoch = train_cls(student_model, train_loader)
+        accuracy_per_epoch.append(accuracy_epoch)
+        cls_loss_per_epoch.append(cls_loss)
     
     print("\n=== FINAL EVALUATION ===")
     
     cls_acc = eval_cls(student_model, test_loader)
+
+    show_loss_per_epoch(jepa_loss_per_epoch, cls_loss_per_epoch)
+    show_cls_data_per_epoch(accuracy_epoch)
     print(f"-- CLS token classification accuracy: {cls_acc:.4f}")
