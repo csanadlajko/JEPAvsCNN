@@ -5,8 +5,9 @@ from src.IJEPA.transform.mri_dataprocess import MRIImageDataset
 from src.IJEPA.transform.cifar10dot1 import CIFAR10dot1Dataset
 
 file = open("././parameters.json")
-parameters: dict[str, int] = json.load(file)
+all_params: dict[str, int] = json.load(file)
 
+parameters = all_params["ijepa"]
 mm_params = parameters["multimodal"]
 
 transform = transforms.Compose([
