@@ -89,8 +89,6 @@ def train(teacher_mod, student_mod, loader, optimizer):
         labels = labels.to(device)
         
         context_masks, target_masks = mask(images) # only indices
-        context_masks.to(device)
-        target_masks.to(device)
         
         with torch.no_grad():
             teacher_tokens = teacher_mod(images)

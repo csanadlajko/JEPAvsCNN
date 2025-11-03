@@ -198,7 +198,6 @@ def apply_mask(x, mask_indices: list[torch.Tensor]):
     if isinstance(mask_indices, list):
         all_masked_tokens = []
         for i, mask_idx in enumerate(mask_indices):
-            mask_idx.to(device)
             if isinstance(mask_idx, list):
                 # enter when selecting target blocks
                 all_idx = torch.cat(mask_idx).to(device)
@@ -206,6 +205,7 @@ def apply_mask(x, mask_indices: list[torch.Tensor]):
                     masked_tokens = x[i:i+1].index_select(1, all_idx + 1) ## needed for cls token
                     all_masked_tokens.append(masked_tokens)
             else:
+                mask_idx = mask_idx.to(device)
                 # enter when selecting context blocks
                 if mask_idx.numel() > 0:
                     masked_tokens = x[i:i+1].index_select(1, mask_idx + 1) ## needed for cls token

@@ -19,6 +19,8 @@ tokenizer = AutoTokenizer.from_pretrained(parameters_llm["MODEL_NAME"])
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 ## hyperparameters
 
 DEPTH = parameters["DEPTH"]
@@ -108,6 +110,8 @@ class ViTPredictor(nn.Module):
 
             enc_labels = enc_labels.unsqueeze(1).expand(-1, num_masks, -1, -1)
             enc_labels = enc_labels.reshape(-1, enc_labels.size(2), enc_labels.size(3))
+
+            enc_labels = enc_labels.to(device)
 
             enc_labels = self.label_to_embed(enc_labels)
 
