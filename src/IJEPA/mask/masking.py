@@ -11,6 +11,8 @@ mm_parameters = total_params["multimodal"]
 
 DEBUG = mm_parameters["DEBUG"]
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
 class Mask(object):
     
     def __init__(
@@ -122,7 +124,7 @@ class Mask(object):
             target_mask = []
             for _ in range(self.ntarg):
                 idx, occ = self._place_block_without_overlap(target_h, target_w, occ)
-                target_mask.append(idx) # +1 if cls token needed
+                target_mask.append(idx)
             
             free = (occ == 0).to(torch.int32)
             
@@ -141,7 +143,7 @@ class Mask(object):
                 tries += 1
             
             free_idx = torch.nonzero(free.flatten(), as_tuple=False).view(-1)
-            target_size = ctx_h * ctx_w
+            target_size = ctx_h * ctx_w + 1
             
             if cmask is None:
                 if free_idx.numel() == 0:
@@ -173,11 +175,9 @@ class Mask(object):
                 needed -= take
                     
             all_mask_target.append(target_mask)
-            all_mask_ctx.append(cmask) # +1 if cls token needed
+            all_mask_ctx.append(cmask)
             
         if id_only:
-            # all_mask_ctx = [idx + 1 for idx in all_mask_ctx]
-            # all_mask_target = [[t + 1 for t in target_list] for target_list in all_mask_target]
             return all_mask_ctx, all_mask_target
         
         masked_ctx_batch = batch.clone()
@@ -200,15 +200,15 @@ def apply_mask(x, mask_indices):
         for i, mask_idx in enumerate(mask_indices):
             if isinstance(mask_idx, list):
                 # enter when selecting target blocks
-                all_idx = torch.cat(mask_idx)   
+                all_idx = torch.cat(mask_idx).to(device)
                 if all_idx.numel() > 0:
-                    masked_tokens = x[i:i+1].index_select(1, all_idx)
+                    masked_tokens = x[i:i+1].index_select(1, all_idx + 1) ## needed for cls token
                     all_masked_tokens.append(masked_tokens)
             else:
                 # enter when selecting context blocks
                 if mask_idx.numel() > 0:
-                    masked_tokens = x[i:i+1].index_select(1, mask_idx)
+                    masked_tokens = x[i:i+1].index_select(1, mask_idx + 1) ## needed for cls token
                     all_masked_tokens.append(masked_tokens)
-        return torch.cat(all_masked_tokens, dim=0)
+        return torch.cat(all_masked_tokens, dim=0).to(device)
     else:
         return x.index_select(1, mask_indices)

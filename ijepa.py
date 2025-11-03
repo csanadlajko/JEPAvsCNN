@@ -36,19 +36,19 @@ predictor = ViTPredictor(
 
 optim_cls = torch.optim.Adam(
     params=student_model.parameters(),
-    lr=0.001,
+    lr=parameters["LEARNING_RATE"]
 )
 
 optim_student = torch.optim.Adam(
     params=student_model.parameters(), 
-    lr=parameters["LEARNING_RATE"],
+    lr=parameters["LEARNING_RATE"]
 )
 
-student_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim_student, 10, 0)
+student_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim_student, parameters['EPOCHS'], 0)
 
 optim_predictor= torch.optim.Adam(
     params=predictor.parameters(), 
-    lr=parameters["LEARNING_RATE"],
+    lr=parameters["LEARNING_RATE"]
 )
 
 
@@ -203,7 +203,7 @@ def eval_cls(model, test_dataset):
     return final_accuracy
 
 def show_loss_per_epoch(jepa_loss_epoch_list: list[int], cls_loss_per_epoch: list[int]):
-    epoch_list = range(1, len(jepa_loss_epoch_list) - 1)
+    epoch_list = range(1, len(jepa_loss_epoch_list) + 1)
     plt.figure(figsize=(8,5))
     plt.plot(epoch_list, jepa_loss_epoch_list, label="MSE loss per JEPA epoch")
     plt.plot(epoch_list, cls_loss_per_epoch, label="CE loss per CLS epochs")
@@ -212,10 +212,11 @@ def show_loss_per_epoch(jepa_loss_epoch_list: list[int], cls_loss_per_epoch: lis
     plt.title('Loss over epochs')
     plt.legend()
     plt.grid(True)
+    plt.savefig('jepa_loss_plot.png', dpi=500)
     plt.show()
 
 def show_cls_data_per_epoch(accuracy_per_epoch: list[int]):
-    epoch_list = range(1, len(accuracy_per_epoch) - 1)
+    epoch_list = range(1, len(accuracy_per_epoch) + 1)
     plt.figure(figsize=(8,5))
     plt.plot(epoch_list, accuracy_per_epoch, label="Accuracy per epoch")
     plt.xlabel('Epochs')
@@ -223,6 +224,7 @@ def show_cls_data_per_epoch(accuracy_per_epoch: list[int]):
     plt.title("CLS accuracy per epoch (%)")
     plt.legend()
     plt.grid(True)
+    plt.savefig('cls_accuracy_plot.png', dpi=300)
     plt.show()
 
 
@@ -230,6 +232,10 @@ if __name__ == "__main__":
     jepa_loss_per_epoch = []
     accuracy_per_epoch = []
     cls_loss_per_epoch = []
+
+    print(f"total number of parameters approx.: {sum(p.numel() for p in student_model.parameters()) + sum(p.numel() for p in teacher_model.parameters()) + sum(p.numel() for p in predictor.parameters())}")
+
+    print(f"Whis from are trainable parameters: {sum(p.numel() for p in student_model.parameters() if p.requires_grad) + sum(p.numel() for p in teacher_model.parameters() if p.requires_grad) + sum(p.numel() for p in predictor.parameters() if p.requires_grad)}")
 
     print(f"Training for {parameters['EPOCHS']} epochs...")
     
@@ -239,11 +245,20 @@ if __name__ == "__main__":
         student_scheduler.step()
         jepa_loss_per_epoch.append(loss_epoch)
     
+    torch.save(student_model.state_dict(), "trained_student_jepa.pth")
+    torch.save(teacher_model.state_dict(), "teacher_model_jepa.pth")
+    torch.save(predictor, "trained_predictor_jepa.pth")
+
+
     for epoch in range(parameters['EPOCHS']):
-        cls_loss, accuracy_epoch = train_cls(student_model, train_loader)
+        cls_loss_at_epoch, accuracy_epoch = train_cls(student_model, train_loader)
         accuracy_per_epoch.append(accuracy_epoch)
-        cls_loss_per_epoch.append(cls_loss)
+        cls_loss_per_epoch.append(cls_loss_at_epoch)
     
+    torch.save(student_model.state_dict(), "trained_student_cls.pth")
+    torch.save(teacher_model.state_dict(), "teacher_model_cls.pth")
+    torch.save(predictor, "trained_predictor_cls.pth")
+
     print("\n=== FINAL EVALUATION ===")
     
     cls_acc = eval_cls(student_model, test_loader)
