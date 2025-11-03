@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch
-from src.IJEPA.transform.datatransform import train_loader, test_loader, mri_train_loader, mri_test_loader, cifar101_test_loader
+from src.IJEPA.transform.datatransform import train_loader, test_loader
 import matplotlib.pyplot as plt
 import datetime
 
