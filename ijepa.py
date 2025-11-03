@@ -247,7 +247,7 @@ if __name__ == "__main__":
     
     torch.save(student_model.state_dict(), "trained_student_jepa.pth")
     torch.save(teacher_model.state_dict(), "teacher_model_jepa.pth")
-    torch.save(predictor, "trained_predictor_jepa.pth")
+    torch.save(predictor.state_dict(), "trained_predictor_jepa.pth")
 
 
     for epoch in range(parameters['EPOCHS']):
@@ -257,7 +257,7 @@ if __name__ == "__main__":
     
     torch.save(student_model.state_dict(), "trained_student_cls.pth")
     torch.save(teacher_model.state_dict(), "teacher_model_cls.pth")
-    torch.save(predictor, "trained_predictor_cls.pth")
+    torch.save(predictor.state_dict(), "trained_predictor_cls.pth")
 
     print("\n=== FINAL EVALUATION ===")
     

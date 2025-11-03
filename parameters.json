@@ -10,7 +10,7 @@
         "EPOCHS": 20,
         "NUM_HEADS": 8,
         "BATCH_SIZE": 16,
-        "LEARNING_RATE": 0.003,
+        "LEARNING_RATE": 0.0005,
         "MOMENTUM": 0.996,
         "NUM_TARGET_BLOCKS": 4,
         "NUM_CLASSES": 10
@@ -26,7 +26,7 @@
         "BATCH_SIZE": 1
     },
     "multimodal": {
-        "MULTIMODAL_RUN": true,
+        "MULTIMODAL_RUN": false,
         "DEBUG": true
     }
 }

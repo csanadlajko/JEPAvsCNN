@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch
 from src.IJEPA.transform.datatransform import train_loader, test_loader
+import matplotlib.pyplot as plt
 
 class LeNet(nn.Module):
 
@@ -17,7 +18,7 @@ class LeNet(nn.Module):
         )
 
         self.fc = nn.Sequential(
-            nn.Linear(400, 120),
+            nn.Linear(13456, 120),
             nn.ReLU(),
             nn.Linear(120, 84),
             nn.ReLU(),
@@ -35,36 +36,90 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 model = LeNet().to(device)
 
 criterion = torch.nn.CrossEntropyLoss()
-optim = torch.optim.Adam(model.parameters(), lr=0.001)
+optim = torch.optim.Adam(model.parameters(), lr=0.0005)
 
-for epoch in range(1):
-    loss = 0
+def train():
+    total, correct = 0, 0
+    total_loss = 0
     for batch_idx, (imgs, labels) in enumerate(train_loader):
         y_pred = model.forward(imgs)
+        imgs.to(device)
+        labels.to(device)
 
         loss = criterion(y_pred, labels)
         loss.backward()
         optim.step()
         optim.zero_grad()
 
-    if batch_idx == 500:
-        break
+        total_loss += loss.item()
 
-    print(f"LeNet CNN loss at epoch {epoch} is: {loss}")
+        _, predicted = torch.max(y_pred, 1)
+        total += labels.size(0)
+
+        correct += (predicted == labels).sum().item()
+        
+        if batch_idx % 100 == 0:
+            print(f"loss at batch: {batch_idx} - {loss.item()}")
+
+    accuracy = (correct / total) * 100
+    epoch_loss = total_loss / total
+    return accuracy, epoch_loss
+
 
 def eval_lenet(train_data, model):
     total, correct = 0, 0
     for batch_idx, (imgs, labels) in enumerate(train_data):
+        imgs.to(device)
+        labels.to(device)
         y_pred = model.forward(imgs)
         _, predicted = torch.max(y_pred, 1)
         total += labels.size(0)
 
         correct += (predicted == labels).sum().item()
 
-        if batch_idx == 200:
-            break
+        if batch_idx % 100 == 0:
+            print(f"running accuracy: {correct / total * 100}")
+
     
-    return 100 * correct, total
+    return 100 * ( correct / total)
+
+def show_lenet_accuracy(accuracy_list: list):
+    epoch_list = range(1, len(accuracy_list) + 1)
+    plt.figure(figsize=(8,5))
+    plt.plot(epoch_list, accuracy_list, label="Accuracy per epoch")
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy per epoch (%)')
+    plt.title("LeNet accuracy per epoch (%)")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig('lenet_accuracy_plot.png', dpi=300)
+    plt.show()
+
+def show_lenet_loss(loss_list: list):
+    epoch_list = range(1, len(loss_list) + 1)
+    plt.figure(figsize=(8,5))
+    plt.plot(epoch_list, loss_list, label="Loss per epoch")
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss per epoch (Cross Entropy)')
+    plt.title("LeNet loss per epoch")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig('lenet_loss_plot.png', dpi=300)
+    plt.show()
+
+acc_list = []
+loss_list = []
+
+for i in range(20):
+    running_acc, running_loss = train()
+    acc_list.append(running_acc)
+    loss_list.append(running_loss)
+    print(f"epoch {i+1} done")
+
+torch.save(model.state_dict(), "trained_lenet.pth")
+
+show_lenet_loss(loss_list)
+show_lenet_accuracy(acc_list)
 
 acc = eval_lenet(test_loader, model)
 
