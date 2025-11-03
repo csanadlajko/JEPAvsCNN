@@ -7,8 +7,11 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 import json
+import datetime
 from typing import Any
 import matplotlib.pyplot as plt
+
+run_identifier: str = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
 cls_loss = nn.CrossEntropyLoss()
 
@@ -212,7 +215,7 @@ def show_loss_per_epoch(jepa_loss_epoch_list: list[int], cls_loss_per_epoch: lis
     plt.title('Loss over epochs')
     plt.legend()
     plt.grid(True)
-    plt.savefig('jepa_loss_plot.png', dpi=500)
+    plt.savefig(f'jepa_loss_plot_{run_identifier}.png', dpi=500)
     plt.show()
 
 def show_cls_data_per_epoch(accuracy_per_epoch: list[int]):
@@ -224,7 +227,7 @@ def show_cls_data_per_epoch(accuracy_per_epoch: list[int]):
     plt.title("CLS accuracy per epoch (%)")
     plt.legend()
     plt.grid(True)
-    plt.savefig('cls_accuracy_plot.png', dpi=300)
+    plt.savefig(f'cls_accuracy_plot_{run_identifier}.png', dpi=300)
     plt.show()
 
 
@@ -245,9 +248,9 @@ if __name__ == "__main__":
         student_scheduler.step()
         jepa_loss_per_epoch.append(loss_epoch)
     
-    torch.save(student_model.state_dict(), "trained_student_jepa.pth")
-    torch.save(teacher_model.state_dict(), "teacher_model_jepa.pth")
-    torch.save(predictor.state_dict(), "trained_predictor_jepa.pth")
+    torch.save(student_model.state_dict(), f"trained_student_jepa_{run_identifier}.pth")
+    torch.save(teacher_model.state_dict(), f"teacher_model_jepa_{run_identifier}.pth")
+    torch.save(predictor.state_dict(), f"trained_predictor_jepa_{run_identifier}.pth")
 
 
     for epoch in range(parameters['EPOCHS']):
@@ -255,9 +258,9 @@ if __name__ == "__main__":
         accuracy_per_epoch.append(accuracy_epoch)
         cls_loss_per_epoch.append(cls_loss_at_epoch)
     
-    torch.save(student_model.state_dict(), "trained_student_cls.pth")
-    torch.save(teacher_model.state_dict(), "teacher_model_cls.pth")
-    torch.save(predictor.state_dict(), "trained_predictor_cls.pth")
+    torch.save(student_model.state_dict(), f"trained_student_cls_{run_identifier}.pth")
+    torch.save(teacher_model.state_dict(), f"teacher_model_cls_{run_identifier}.pth")
+    torch.save(predictor.state_dict(), f"trained_predictor_cls_{run_identifier}.pth")
 
     print("\n=== FINAL EVALUATION ===")
     

@@ -1,7 +1,10 @@
 import torch.nn as nn
 import torch
-from src.IJEPA.transform.datatransform import train_loader, test_loader
+from src.IJEPA.transform.datatransform import train_loader, test_loader, mri_train_loader, mri_test_loader, cifar101_test_loader
 import matplotlib.pyplot as plt
+import datetime
+
+run_identifier: str = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 
 class LeNet(nn.Module):
 
@@ -92,7 +95,7 @@ def show_lenet_accuracy(accuracy_list: list):
     plt.title("LeNet accuracy per epoch (%)")
     plt.legend()
     plt.grid(True)
-    plt.savefig('lenet_accuracy_plot.png', dpi=300)
+    plt.savefig(f'lenet_accuracy_plot_{run_identifier}.png', dpi=300)
     plt.show()
 
 def show_lenet_loss(loss_list: list):
@@ -104,7 +107,7 @@ def show_lenet_loss(loss_list: list):
     plt.title("LeNet loss per epoch")
     plt.legend()
     plt.grid(True)
-    plt.savefig('lenet_loss_plot.png', dpi=300)
+    plt.savefig(f'lenet_loss_plot_{run_identifier}.png', dpi=300)
     plt.show()
 
 acc_list = []
@@ -116,7 +119,7 @@ for i in range(20):
     loss_list.append(running_loss)
     print(f"epoch {i+1} done")
 
-torch.save(model.state_dict(), "trained_lenet.pth")
+torch.save(model.state_dict(), f"trained_lenet_{run_identifier}.pth")
 
 show_lenet_loss(loss_list)
 show_lenet_accuracy(acc_list)
