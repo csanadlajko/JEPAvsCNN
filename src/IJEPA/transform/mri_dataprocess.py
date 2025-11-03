@@ -1,0 +1,32 @@
+import os
+from PIL import Image
+from torch.utils.data import Dataset
+
+class MRIImageDataset(Dataset):
+
+    def __init__(self, root_dir, transform=None):
+        self.root_dir = root_dir
+        self.transform = transform
+
+        self.imgs = [f for f in os.listdir(root_dir) if f.lower().endswith('.png')]
+
+        self.labels = [f.split('_')[-1].split('.')[0] for f in self.imgs]
+
+        self.classes = sorted(list(self.labels))
+
+        self.class_to_idx = {cls: i for i, cls in enumerate(self.classes)}
+
+    def __len__(self):
+        return len(self.imgs)
+    
+    def __getitem__(self, idx):
+        img_path = os.path.join(self.root_dir, self.imgs[idx])
+        image = Image.open(img_path).convert('RGB')
+
+        label = self.labels[idx]
+        label = self.class_to_idx[label]
+
+        if self.transform:
+            image = self.transform(image)
+
+        return image, label

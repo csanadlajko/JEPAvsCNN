@@ -3,6 +3,12 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# mri dataset
+*MRIDATA
+
+# cifar 10.1 dataset
+*CIFAR10dot1
+
 # training output folder
 *outputs
 
