@@ -194,10 +194,11 @@ class Mask(object):
             
         return collated_batch, masked_ctx_batch, masked_target_batch
     
-def apply_mask(x, mask_indices):
+def apply_mask(x, mask_indices: list[torch.Tensor]):
     if isinstance(mask_indices, list):
         all_masked_tokens = []
         for i, mask_idx in enumerate(mask_indices):
+            mask_idx.to(device)
             if isinstance(mask_idx, list):
                 # enter when selecting target blocks
                 all_idx = torch.cat(mask_idx).to(device)
