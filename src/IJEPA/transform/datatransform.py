@@ -8,7 +8,7 @@ file = open("././parameters.json")
 all_params: dict[str, int] = json.load(file)
 
 parameters = all_params["ijepa"]
-mm_params = parameters["multimodal"]
+mm_params = all_params["multimodal"]
 
 transform = transforms.Compose([
     transforms.Resize((parameters["IMAGE_SIZE"], parameters["IMAGE_SIZE"])),
