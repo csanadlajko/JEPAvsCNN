@@ -1,5 +1,5 @@
 from src.IJEPA.mask.masking import Mask
-from src.IJEPA.transform.datatransform import train_loader, test_loader
+from src.IJEPA.transform.datatransform import train_loader, test_loader, mri_train_loader, mri_test_loader
 from src.IJEPA.vit.vit import ViTPredictor
 from src.IJEPA.vit.vit import teacher_model, student_model
 from src.IJEPA.mask.masking import apply_mask
@@ -244,7 +244,7 @@ if __name__ == "__main__":
     
     for epoch in range(parameters['EPOCHS']):
         print(f"\n=== EPOCH {epoch + 1}/{parameters['EPOCHS']} ===")
-        loss_epoch = train(teacher_model, student_model, train_loader, optim_student)
+        loss_epoch = train(teacher_model, student_model, mri_train_loader, optim_student)
         student_scheduler.step()
         jepa_loss_per_epoch.append(loss_epoch)
     
@@ -254,7 +254,7 @@ if __name__ == "__main__":
 
 
     for epoch in range(parameters['EPOCHS']):
-        cls_loss_at_epoch, accuracy_epoch = train_cls(student_model, train_loader)
+        cls_loss_at_epoch, accuracy_epoch = train_cls(student_model, mri_train_loader)
         accuracy_per_epoch.append(accuracy_epoch)
         cls_loss_per_epoch.append(cls_loss_at_epoch)
     
@@ -264,7 +264,7 @@ if __name__ == "__main__":
 
     print("\n=== FINAL EVALUATION ===")
     
-    cls_acc = eval_cls(student_model, test_loader)
+    cls_acc = eval_cls(student_model, mri_train_loader)
 
     show_loss_per_epoch(jepa_loss_per_epoch, cls_loss_per_epoch)
     show_cls_data_per_epoch(accuracy_epoch)

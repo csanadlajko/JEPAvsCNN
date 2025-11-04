@@ -10,14 +10,17 @@ all_params: dict[str, int] = json.load(file)
 parameters = all_params["ijepa"]
 mm_params = all_params["multimodal"]
 
+
 transform = transforms.Compose([
     transforms.Resize((parameters["IMAGE_SIZE"], parameters["IMAGE_SIZE"])),
-    transforms.RandomHorizontalFlip(p=0.5),
-    transforms.RandomRotation(degrees=15),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+    transforms.RandomInvert(0.5),
+    transforms.RandomHorizontalFlip(p=0.6),
+    transforms.RandomRotation(degrees=30),
+    transforms.ColorJitter(brightness=0.6, contrast=0.8),
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.2010])
+    transforms.GaussianBlur(3, (0.1, 1))
 ])
+
 
 test_transform = transforms.Compose([
     transforms.Resize((parameters["IMAGE_SIZE"], parameters["IMAGE_SIZE"])),
@@ -44,29 +47,27 @@ test_loader = DataLoader(
 
 ## LOAD MRI DATASET
 
-if mm_params["LOAD_MRI"]:
 
-    mri_dset = MRIImageDataset("MRIDATA", transform=test_transform)
+full_dataset_train = MRIImageDataset("MRIDATA", transform=transform)
+full_dataset_test = MRIImageDataset("MRIDATA", transform=test_transform)
 
-    train_size = int(0.8*len(mri_dset))
-    test_size = len(mri_dset) - train_size
+train_size = int(0.8 * len(full_dataset_train))
+test_size = len(full_dataset_train) - train_size
 
-    mri_train_dset, mri_test_dset = random_split(mri_dset, [train_size, test_size])
+mri_train_dset, _ = random_split(full_dataset_train, [train_size, test_size])
+_, mri_test_dset = random_split(full_dataset_test, [train_size, test_size])
 
-    mri_train_dset.dataset.transform = transform
-    mri_test_dset.dataset.transform = test_transform
+mri_train_loader = DataLoader(
+    dataset=mri_train_dset,
+    batch_size=parameters["BATCH_SIZE"],
+    shuffle=True
+)
 
-    mri_train_loader = DataLoader(
-        dataset=mri_train_dset,
-        batch_size=parameters["BATCH_SIZE"],
-        shuffle=True
-    )
-
-    mri_test_loader = DataLoader(
-        dataset=mri_test_dset,
-        batch_size=parameters["BATCH_SIZE"],
-        shuffle=False
-    )
+mri_test_loader = DataLoader(
+    dataset=mri_test_dset,
+    batch_size=parameters["BATCH_SIZE"],
+    shuffle=False
+)
 
 ## LOAD CIFAR10.1 DATASET
 

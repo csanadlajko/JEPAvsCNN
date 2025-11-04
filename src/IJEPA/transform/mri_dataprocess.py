@@ -12,21 +12,16 @@ class MRIImageDataset(Dataset):
 
         self.labels = [f.split('_')[-1].split('.')[0] for f in self.imgs]
 
-        self.classes = sorted(list(self.labels))
-
-        self.class_to_idx = {cls: i for i, cls in enumerate(self.classes)}
-
     def __len__(self):
         return len(self.imgs)
     
     def __getitem__(self, idx):
         img_path = os.path.join(self.root_dir, self.imgs[idx])
         image = Image.open(img_path).convert('RGB')
+        
+        label = int(self.labels[idx])
 
-        label = self.labels[idx]
-        label = self.class_to_idx[label]
-
-        if self.transform:
+        if self.transform is not None:
             image = self.transform(image)
 
         return image, label
