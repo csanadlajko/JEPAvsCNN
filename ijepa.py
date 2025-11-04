@@ -38,8 +38,8 @@ predictor = ViTPredictor(
 )
 
 optim_cls = torch.optim.Adam(
-    params=student_model.parameters(),
-    lr=parameters["LEARNING_RATE"]
+    params=predictor.parameters(),
+    lr=0.001 # for faster convergence when classifying
 )
 
 optim_student = torch.optim.Adam(
