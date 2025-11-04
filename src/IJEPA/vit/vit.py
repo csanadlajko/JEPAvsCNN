@@ -12,6 +12,9 @@ param_file = json.load(file)
 
 parameters: dict[str, Any] = param_file["ijepa"]
 parameters_llm: dict[str, Any] = param_file["llmjepa"]
+parameters_mm: dict[str, Any] = param_file["multimodal"]
+
+DEBUG = parameters_mm["DEBUG"]
 
 text_encoder = AutoModelForCausalLM.from_pretrained(parameters_llm["MODEL_NAME"])
 tokenizer = AutoTokenizer.from_pretrained(parameters_llm["MODEL_NAME"])
@@ -60,7 +63,22 @@ class ViTPredictor(nn.Module):
             nn.Linear(384, pred_dim), ## depends on the embedding size of the text encoder
             nn.LayerNorm(pred_dim),
             nn.GELU(),
-            nn.Linear(pred_dim, pred_dim)
+            nn.Linear(pred_dim, embed_dim)
+        )
+
+        self.cls_fc1 = nn.Linear(embed_dim, embed_dim // 2)
+        self.cls_fc2 = nn.Linear(embed_dim // 2, NUM_CLASSES)
+
+        nn.init.xavier_uniform_(self.cls_fc1.weight)
+        nn.init.zeros_(self.cls_fc1.bias)
+        nn.init.xavier_uniform_(self.cls_fc2.weight)
+        nn.init.zeros_(self.cls_fc2.bias)
+
+        self.cls_head = nn.Sequential(
+            self.cls_fc1,
+            nn.GELU(),
+            nn.Dropout(drop_rate),
+            self.cls_fc2
         )
 
         self.post_pred_mhsa = nn.MultiheadAttention(pred_dim, num_heads, drop_rate, batch_first=True)
@@ -69,7 +87,7 @@ class ViTPredictor(nn.Module):
         self.predictor_norm = nn.LayerNorm(pred_dim)
         self.predictor_proj = nn.Linear(pred_dim, embed_dim) # back to encoder dimension
 
-    def forward(self, x, context_mask, target_mask, labels: torch.Tensor, multimodal: bool):
+    def forward(self, x, context_mask, target_mask, labels: torch.Tensor, multimodal: bool, return_cls_only = False):
 
         B = x.size(0)
         
@@ -83,7 +101,7 @@ class ViTPredictor(nn.Module):
         
         context_tokens_repeated = x.repeat(target_positions.size(0) // x.size(0), 1, 1)
         
-        x = torch.cat([context_tokens_repeated, mask_tokens], dim=1)
+        x = torch.cat([context_tokens_repeated, mask_tokens], dim=1) # full predicted image with cls token on index 0
         
         for block in self.pred_blocks:
             x = block(x)
@@ -91,6 +109,7 @@ class ViTPredictor(nn.Module):
         x = self.predictor_norm(x)
         
         context_length = context_tokens_repeated.size(1)
+
         predicted_tokens = x[:, context_length:]
         
         predicted_tokens = self.predictor_proj(predicted_tokens)
@@ -118,6 +137,11 @@ class ViTPredictor(nn.Module):
             pred_attended, _ = self.post_pred_mhsa(predicted_tokens, enc_labels, enc_labels)
 
             predicted_tokens = predicted_tokens + pred_attended
+
+            if return_cls_only:
+                full_img = torch.cat([context_tokens_repeated, predicted_tokens], dim=1) ## create new total image embedding with finetuned target predictions
+                cls_token = full_img[:, 0, :] # acquire cls token representing predicted image
+                return self.cls_head(cls_token)
         
         return predicted_tokens
 
@@ -196,21 +220,6 @@ class VisionTransformer(nn.Module):
             for _ in range(depth)
         ])
         self.norm = nn.LayerNorm(embed_dim)
-
-        self.cls_fc1 = nn.Linear(embed_dim, embed_dim // 2)
-        self.cls_fc2 = nn.Linear(embed_dim //2, NUM_CLASSES)
-
-        nn.init.xavier_uniform_(self.cls_fc1.weight)
-        nn.init.zeros_(self.cls_fc1.bias)
-        nn.init.xavier_uniform_(self.cls_fc2.weight)
-        nn.init.zeros_(self.cls_fc2.bias)
-        
-        self.cls_head = nn.Sequential(
-            self.cls_fc1,
-            nn.GELU(),
-            nn.Dropout(drop_rate),
-            self.cls_fc2
-        )
         
     def forward(self, x, masks=None, return_cls_only=False, return_logits=False):
         x = self.patch_embed(x) # patch embed and pos encoding
@@ -222,12 +231,6 @@ class VisionTransformer(nn.Module):
             x = block(x)
 
         x = self.norm(x)
-        
-        if return_cls_only:
-            cls_token = x[:, 0, :]
-            if return_logits:
-                return self.cls_head(cls_token)
-            return cls_token
         
         return x
     

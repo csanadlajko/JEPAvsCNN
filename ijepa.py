@@ -100,7 +100,7 @@ def train(teacher_mod, student_mod, loader, optimizer):
         
         student_tokens = student_mod(images, context_masks)
 
-        predicted_target_tokens = predictor(student_tokens, context_masks, target_masks, labels, MULTIMODAL_RUN)
+        predicted_target_tokens = predictor(student_tokens, context_masks, target_masks, labels, MULTIMODAL_RUN, return_cls_only=False)
         
         optimizer.zero_grad()
         optim_predictor.zero_grad()
@@ -129,8 +129,9 @@ def train(teacher_mod, student_mod, loader, optimizer):
 
     return avg_loss
 
-def train_cls(student_model, train_dataset):
-    student_model.train()
+def train_cls(student_model, train_dataset, predictor):
+    student_model.eval() # freeze trained student model
+    predictor.train()
     
     print("---STARTING CLS TRAINING---")
     total_loss = 0.0
@@ -147,8 +148,14 @@ def train_cls(student_model, train_dataset):
     for batch_idx, (images, labels) in enumerate(train_dataset):
         images = images.to(device)
         labels = labels.to(device)
+
+        ctx_mask, trgt_masks = mask(images)
         
-        pred_classes = student_model(images, masks=None, return_cls_only=True, return_logits=True)
+        # student mask embeddings from trained model
+        student_enc = student_model(images, masks=ctx_mask)
+
+        # cls tokens for the predicted full image -> not training cls from context embeddings
+        pred_classes = predictor(student_enc, ctx_mask, trgt_masks, labels, MULTIMODAL_RUN, return_cls_only=True)
 
         optim_cls.zero_grad()
 
@@ -174,11 +181,12 @@ def train_cls(student_model, train_dataset):
 
     return avg_loss, current_acc * 100
 
-def eval_cls(model, test_dataset):
+def eval_cls(model, test_dataset, predictor):
     """
     Evaluate the model using CLS token classification
     """
     model.eval()
+    predictor.eval()
     total_correct = 0
     total_samples = 0
     
@@ -188,8 +196,13 @@ def eval_cls(model, test_dataset):
         for batch_idx, (images, labels) in enumerate(test_dataset):
             images = images.to(device)
             labels = labels.to(device)
+
+            ctx_masks, target_masks = mask(images)
             
-            pred_classes = model(images, masks=None, return_cls_only=True, return_logits=True)
+            student_embeddings = model(images, masks=ctx_masks)
+
+            pred_classes = predictor(student_embeddings, ctx_masks, target_masks, labels, MULTIMODAL_RUN, return_cls_only=True)
+
             _, predicted = torch.max(pred_classes, 1)
             
             total_correct += (predicted == labels).sum().item()
@@ -254,7 +267,7 @@ if __name__ == "__main__":
 
 
     for epoch in range(parameters['EPOCHS']):
-        cls_loss_at_epoch, accuracy_epoch = train_cls(student_model, mri_train_loader)
+        cls_loss_at_epoch, accuracy_epoch = train_cls(student_model, mri_train_loader, predictor)
         accuracy_per_epoch.append(accuracy_epoch)
         cls_loss_per_epoch.append(cls_loss_at_epoch)
     
@@ -264,7 +277,7 @@ if __name__ == "__main__":
 
     print("\n=== FINAL EVALUATION ===")
     
-    cls_acc = eval_cls(student_model, mri_train_loader)
+    cls_acc = eval_cls(student_model, mri_train_loader, predictor)
 
     show_loss_per_epoch(jepa_loss_per_epoch, cls_loss_per_epoch)
     show_cls_data_per_epoch(accuracy_epoch)
