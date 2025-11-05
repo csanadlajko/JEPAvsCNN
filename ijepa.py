@@ -277,8 +277,8 @@ if __name__ == "__main__":
 
     print("\n=== FINAL EVALUATION ===")
     
-    cls_acc = eval_cls(student_model, mri_train_loader, predictor)
+    cls_acc = eval_cls(student_model, mri_test_loader, predictor)
 
     show_loss_per_epoch(jepa_loss_per_epoch, cls_loss_per_epoch)
-    show_cls_data_per_epoch(accuracy_epoch)
+    show_cls_data_per_epoch(accuracy_per_epoch)
     print(f"-- CLS token classification accuracy: {cls_acc:.4f}")

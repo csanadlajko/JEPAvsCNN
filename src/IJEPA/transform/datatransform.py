@@ -47,9 +47,9 @@ test_loader = DataLoader(
 
 ## LOAD MRI DATASET
 
-
-full_dataset_train = MRIImageDataset("MRIDATA", transform=transform)
-full_dataset_test = MRIImageDataset("MRIDATA", transform=test_transform)
+# inverse transform for measuting generalization
+full_dataset_train = MRIImageDataset("MRIDATA", transform=test_transform)
+full_dataset_test = MRIImageDataset("MRIDATA", transform=transform)
 
 train_size = int(0.8 * len(full_dataset_train))
 test_size = len(full_dataset_train) - train_size
