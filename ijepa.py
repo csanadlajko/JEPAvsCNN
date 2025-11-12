@@ -269,7 +269,7 @@ if __name__ == "__main__":
 
 
     for epoch in range(parameters['EPOCHS']):
-        cls_loss_at_epoch, accuracy_epoch = train_cls(trained_student, train_loader, trained_predictor)
+        cls_loss_at_epoch, accuracy_epoch = train_cls(student_model, train_loader, predictor)
         accuracy_per_epoch.append(accuracy_epoch)
         cls_loss_per_epoch.append(cls_loss_at_epoch)
     
