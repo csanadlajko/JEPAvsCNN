@@ -18,7 +18,9 @@ transform = transforms.Compose([
     transforms.RandomRotation(degrees=30),
     transforms.ColorJitter(brightness=0.6, contrast=0.8),
     transforms.ToTensor(),
-    transforms.GaussianBlur(3, (0.1, 1))
+    transforms.GaussianBlur(3, (0.1, 1)),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                     std=[0.229, 0.224, 0.225])
 ])
 
 
@@ -48,8 +50,8 @@ test_loader = DataLoader(
 ## LOAD MRI DATASET
 
 # inverse transform for measuting generalization
-full_dataset_train = MRIImageDataset("MRIDATA", transform=test_transform)
-full_dataset_test = MRIImageDataset("MRIDATA", transform=transform)
+full_dataset_train = MRIImageDataset("MRIDATA", transform=transform)
+full_dataset_test = MRIImageDataset("MRIDATA", transform=test_transform)
 
 train_size = int(0.8 * len(full_dataset_train))
 test_size = len(full_dataset_train) - train_size

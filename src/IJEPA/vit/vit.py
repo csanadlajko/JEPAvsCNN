@@ -139,7 +139,7 @@ class ViTPredictor(nn.Module):
             predicted_tokens = predicted_tokens + pred_attended
 
             if return_cls_only:
-                full_img = torch.cat([context_tokens_repeated, predicted_tokens], dim=1) ## create new total image embedding with finetuned target predictions
+                full_img = torch.cat([x[:context_tokens_repeated.size(1)], predicted_tokens], dim=1) ## create new total image embedding with finetuned target predictions
                 cls_token = full_img[:, 0, :] # acquire cls token representing predicted image
                 return self.cls_head(cls_token)
         

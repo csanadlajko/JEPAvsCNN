@@ -25,6 +25,7 @@ params_all: dict[str, Any] = json.load(file)
 parameters = params_all["ijepa"]
 
 MULTIMODAL_RUN = params_all["multimodal"]["MULTIMODAL_RUN"]
+DEBUG = params_all["multimodal"]["DEBUG"]
 
 if MULTIMODAL_RUN:
     print("Starting training in multimodal mode!")
@@ -261,19 +262,21 @@ if __name__ == "__main__":
         student_scheduler.step()
         jepa_loss_per_epoch.append(loss_epoch)
     
-    torch.save(student_model.state_dict(), f"trained_student_jepa_{run_identifier}.pth")
-    torch.save(teacher_model.state_dict(), f"teacher_model_jepa_{run_identifier}.pth")
-    torch.save(predictor.state_dict(), f"trained_predictor_jepa_{run_identifier}.pth")
+    if DEBUG:
+        torch.save(student_model.state_dict(), f"trained_student_jepa_{run_identifier}.pth")
+        torch.save(teacher_model.state_dict(), f"teacher_model_jepa_{run_identifier}.pth")
+        torch.save(predictor.state_dict(), f"trained_predictor_jepa_{run_identifier}.pth")
 
 
     for epoch in range(parameters['EPOCHS']):
-        cls_loss_at_epoch, accuracy_epoch = train_cls(student_model, mri_train_loader, predictor)
+        cls_loss_at_epoch, accuracy_epoch = train_cls(trained_student, train_loader, trained_predictor)
         accuracy_per_epoch.append(accuracy_epoch)
         cls_loss_per_epoch.append(cls_loss_at_epoch)
     
-    torch.save(student_model.state_dict(), f"trained_student_cls_{run_identifier}.pth")
-    torch.save(teacher_model.state_dict(), f"teacher_model_cls_{run_identifier}.pth")
-    torch.save(predictor.state_dict(), f"trained_predictor_cls_{run_identifier}.pth")
+    if DEBUG:
+        torch.save(student_model.state_dict(), f"trained_student_cls_{run_identifier}.pth")
+        torch.save(teacher_model.state_dict(), f"teacher_model_cls_{run_identifier}.pth")
+        torch.save(predictor.state_dict(), f"trained_predictor_cls_{run_identifier}.pth")
 
     print("\n=== FINAL EVALUATION ===")
     
